@@ -1215,7 +1215,7 @@ function AdminPage({catalog,setCatalog}) {
           {sb===b.id
             ?(<div style={{display:"flex",gap:8,marginTop:8}}>
                 <Input value={nm} onChange={e=>setNm(e.target.value)} placeholder="型號名稱" style={{marginBottom:0}}/>
-                <Btn sm onClick={()=>{if(!nm)return;sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:[nm,...x.models]}:x)});setNm("");}}>新增</Btn>
+                <Btn sm onClick={()=>{if(!nm)return;sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:[...x.models,nm]}:x)});setNm("");}}>新增</Btn>
                 <Btn v="ghost" sm onClick={()=>setSb("")}>取消</Btn>
               </div>)
             :<Btn v="ghost" sm onClick={()=>setSb(b.id)} style={{marginTop:8}}>＋ 新增型號</Btn>
