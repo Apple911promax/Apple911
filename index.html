@@ -303,19 +303,93 @@ const ITEM_MAP = {
 const DEF = {
   brands: [
     { id:"apple", name:"Apple", series:[
-      { name:"iPhone 16 系列", models:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },
-      { name:"iPhone 15 系列", models:["iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15"] },
-      { name:"iPhone 14 系列", models:["iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14"] },
-      { name:"iPhone 13 系列", models:["iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini"] },
-      { name:"iPhone 12 系列", models:["iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini"] },
-      { name:"iPhone 11 系列", models:["iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11"] },
-      { name:"iPhone SE 系列", models:["iPhone SE (3rd)","iPhone SE (2nd)"] },
-      { name:"iPad Pro",       models:["iPad Pro 13\"","iPad Pro 11\""] },
-      { name:"iPad Air",       models:["iPad Air (M2)","iPad Air (M1)"] },
-      { name:"iPad mini",      models:["iPad mini (7th)","iPad mini (6th)"] },
-      { name:"iPad",           models:["iPad (10th)","iPad (9th)"] },
-      { name:"MacBook Pro",    models:["MacBook Pro 16\" M4","MacBook Pro 14\" M4","MacBook Pro 16\" M3","MacBook Pro 14\" M3"] },
-      { name:"MacBook Air",    models:["MacBook Air 15\" M3","MacBook Air 13\" M3","MacBook Air M2"] },
+      { name:"iPhone 16 系列", models:[
+        "iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },
+      { name:"iPhone 15 系列", models:[
+        "iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15"] },
+      { name:"iPhone 14 系列", models:[
+        "iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14"] },
+      { name:"iPhone 13 系列", models:[
+        "iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini"] },
+      { name:"iPhone 12 系列", models:[
+        "iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini"] },
+      { name:"iPhone 11 系列", models:[
+        "iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11"] },
+      { name:"iPhone SE 系列", models:[
+        "iPhone SE (3rd)","iPhone SE (2nd)"] },
+      { name:"iPad Pro 13吋", models:[
+        "A3360 - iPad Pro（13 吋，M5）Wi-Fi",
+        "A3361 - iPad Pro（13 吋，M5）Wi-Fi + 行動網路",
+        "A2925 - iPad Pro（13 吋，M4）Wi-Fi",
+        "A2926 - iPad Pro（13 吋，M4）Wi-Fi + 行動網路",
+        "A2436 - iPad Pro（12.9 吋，第 6 代）Wi-Fi",
+        "A2437 - iPad Pro（12.9 吋，第 6 代）Wi-Fi + 行動網路",
+        "A2378 - iPad Pro（12.9 吋，第 5 代）Wi-Fi",
+        "A2461 - iPad Pro（12.9 吋，第 5 代）Wi-Fi + 行動網路",
+        "A2229 - iPad Pro（12.9 吋，第 4 代）Wi-Fi",
+        "A2069 - iPad Pro（12.9 吋，第 4 代）Wi-Fi + 行動網路"] },
+      { name:"iPad Pro 11吋", models:[
+        "A3357 - iPad Pro（11 吋，M5）Wi-Fi",
+        "A3358 - iPad Pro（11 吋，M5）Wi-Fi + 行動網路",
+        "A2836 - iPad Pro（11 吋，M4）Wi-Fi",
+        "A2837 - iPad Pro（11 吋，M4）Wi-Fi + 行動網路",
+        "A2759 - iPad Pro（11 吋，第 4 代）Wi-Fi",
+        "A2761 - iPad Pro（11 吋，第 4 代）Wi-Fi + 行動網路",
+        "A2377 - iPad Pro（11 吋，第 3 代）Wi-Fi",
+        "A2459 - iPad Pro（11 吋，第 3 代）Wi-Fi + 行動網路",
+        "A2228 - iPad Pro（11 吋，第 2 代）Wi-Fi",
+        "A2068 - iPad Pro（11 吋，第 2 代）Wi-Fi + 行動網路",
+        "A1980 - iPad Pro（11 吋，第 1 代）Wi-Fi",
+        "A2013 - iPad Pro（11 吋，第 1 代）Wi-Fi + 行動網路"] },
+      { name:"iPad Air", models:[
+        "A3461 - iPad Air（13 吋，M4）Wi-Fi",
+        "A3462 - iPad Air（13 吋，M4）Wi-Fi + 行動網路",
+        "A3459 - iPad Air（11 吋，M4）Wi-Fi",
+        "A3460 - iPad Air（11 吋，M4）Wi-Fi + 行動網路",
+        "A3268 - iPad Air（13 吋，M3）Wi-Fi",
+        "A3269 - iPad Air（13 吋，M3）Wi-Fi + 行動網路",
+        "A3266 - iPad Air（11 吋，M3）Wi-Fi",
+        "A3267 - iPad Air（11 吋，M3）Wi-Fi + 行動網路",
+        "A2898 - iPad Air（13 吋，M2）Wi-Fi",
+        "A2899 - iPad Air（13 吋，M2）Wi-Fi + 行動網路",
+        "A2902 - iPad Air（11 吋，M2）Wi-Fi",
+        "A2903 - iPad Air（11 吋，M2）Wi-Fi + 行動網路",
+        "A2588 - iPad Air（第 5 代）Wi-Fi",
+        "A2589 - iPad Air（第 5 代）Wi-Fi + 行動網路",
+        "A2316 - iPad Air（第 4 代）Wi-Fi",
+        "A2324 - iPad Air（第 4 代）Wi-Fi + 行動網路"] },
+      { name:"iPad mini", models:[
+        "A2993 - iPad mini（A17 Pro）Wi-Fi",
+        "A2995 - iPad mini（A17 Pro）Wi-Fi + 行動網路",
+        "A2567 - iPad mini（第 6 代）Wi-Fi",
+        "A2568 - iPad mini（第 6 代）Wi-Fi + 行動網路",
+        "A2133 - iPad mini（第 5 代）Wi-Fi",
+        "A2124 - iPad mini（第 5 代）Wi-Fi + 行動網路"] },
+      { name:"iPad", models:[
+        "A3354 - iPad（A16）Wi-Fi",
+        "A3355 - iPad（A16）Wi-Fi + 行動網路",
+        "A2696 - iPad（第 10 代）Wi-Fi",
+        "A2757 - iPad（第 10 代）Wi-Fi + 行動網路",
+        "A2602 - iPad（第 9 代）Wi-Fi",
+        "A2604 - iPad（第 9 代）Wi-Fi + 行動網路",
+        "A2270 - iPad（第 8 代）Wi-Fi",
+        "A2428 - iPad（第 8 代）Wi-Fi + 行動網路"] },
+      { name:"MacBook Pro 16吋", models:[
+        "A2991 - MacBook Pro 16吋 M3 Pro",
+        "A2992 - MacBook Pro 16吋 M3 Max",
+        "A2780 - MacBook Pro 16吋 M2 Pro / M2 Max",
+        "A2485 - MacBook Pro 16吋 M1 Pro / M1 Max"] },
+      { name:"MacBook Pro 14吋", models:[
+        "A2992 - MacBook Pro 14吋 M3 / M3 Pro / M3 Max",
+        "A2779 - MacBook Pro 14吋 M2 Pro / M2 Max",
+        "A2442 - MacBook Pro 14吋 M1 Pro / M1 Max"] },
+      { name:"MacBook Air 15吋", models:[
+        "A3114 - MacBook Air 15吋 M3",
+        "A2941 - MacBook Air 15吋 M2"] },
+      { name:"MacBook Air 13吋", models:[
+        "A3113 - MacBook Air 13吋 M3",
+        "A2681 - MacBook Air 13吋 M2",
+        "A2337 - MacBook Air 13吋 M1"] },
     ]},
     { id:"samsung", name:"三星 Samsung", series:[
       { name:"S 系列", models:["Galaxy S25 Ultra","Galaxy S25+","Galaxy S25","Galaxy S24 Ultra","Galaxy S24+","Galaxy S24"] },
