@@ -1282,9 +1282,32 @@ function AdminPage({catalog,setCatalog}) {
         <div style={{marginTop:16,color:C.accent,fontWeight:700,fontSize:13,marginBottom:8}}>系列 / 型號管理</div>
         {catalog.brands.map(b=>{
           const bSeries = b.series || (b.models?[{name:"全部型號",models:b.models}]:[]);
+          const brandColKey = `brand_col_${b.id}`;
+          const brandCollapsed = !!newSeriesName[brandColKey];
+          const totalModels = bSeries.reduce((a,s)=>a+s.models.length,0);
           return (
           <Card key={b.id}>
-            <div style={{color:C.text,fontWeight:700,fontSize:14,marginBottom:10}}>{b.name}</div>
+            {/* 品牌標題列 — 點擊收合 */}
+            <div
+              onClick={()=>setNewSeriesName(prev=>({...prev,[brandColKey]:!prev[brandColKey]}))}
+              style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                marginBottom:brandCollapsed?0:12,cursor:"pointer",userSelect:"none"}}
+            >
+              <div>
+                <span style={{color:C.text,fontWeight:700,fontSize:15}}>{b.name}</span>
+                <span style={{color:C.textDim,fontSize:11,marginLeft:8}}>
+                  {bSeries.length} 系列 · {totalModels} 型號
+                </span>
+              </div>
+              <span style={{
+                color:C.accent,fontSize:20,
+                transform:brandCollapsed?"rotate(0deg)":"rotate(180deg)",
+                transition:"transform .2s",display:"inline-block",
+              }}>⌃</span>
+            </div>
+
+            {/* 收合時隱藏內容 */}
+            {!brandCollapsed && (<div>
 
             {/* 新增系列 */}
             <div style={{display:"flex",gap:6,marginBottom:10}}>
@@ -1373,6 +1396,7 @@ function AdminPage({catalog,setCatalog}) {
                 );
               }}
             />
+          </div>)}
           </Card>
         );})}
       </div>)}
