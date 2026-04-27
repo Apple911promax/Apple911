@@ -13,6 +13,7 @@
   <style>
     * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
     body { margin:0; padding:0; background:#050d1a; overscroll-behavior:none; -webkit-overflow-scrolling:touch; }
+    select { color-scheme: dark; }
   </style>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -104,55 +105,7 @@ const today= () => new Date().toISOString().slice(0,10);
 const nowYM= () => { const d=new Date(); return {y:d.getFullYear(),m:d.getMonth()+1}; };
 const MZ   = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 // ─── CUSTOM DATE PICKER (全數字，無英文) ──────────────────────────────────────
-// ── 單欄點選器 (iOS 相容) ────────────────────────────────────────────────────
-function TapPicker({options, value, onChange, placeholder, width}) {
-  const [open, setOpen] = useState(false);
-  const display = value ? String(value) : placeholder;
-  return (
-    <div style={{position:"relative", width: width||"auto", flex:1}}>
-      {/* 顯示目前選擇，點擊展開 */}
-      <div
-        onClick={()=>setOpen(o=>!o)}
-        style={{
-          background:"rgba(0,20,70,0.9)", border:`1.5px solid ${open?C.accent:C.border}`,
-          borderRadius:9, color: value?C.text:C.textDim,
-          padding:"11px 10px", fontSize:16, cursor:"pointer",
-          display:"flex", justifyContent:"space-between", alignItems:"center",
-          userSelect:"none", WebkitUserSelect:"none",
-        }}
-      >
-        <span>{display}</span>
-        <span style={{color:C.textDim, fontSize:12}}>{open?"▲":"▼"}</span>
-      </div>
-      {/* 展開選項清單 */}
-      {open && (
-        <div style={{
-          position:"absolute", top:"calc(100% + 4px)", left:0, right:0, zIndex:999,
-          background:"rgba(5,15,50,0.98)", border:`1.5px solid ${C.accent}`,
-          borderRadius:10, maxHeight:220, overflowY:"auto",
-          boxShadow:"0 8px 32px rgba(0,0,0,0.6)",
-          WebkitOverflowScrolling:"touch",
-        }}>
-          {options.map(opt=>(
-            <div
-              key={opt}
-              onTouchEnd={e=>{e.preventDefault(); onChange(String(opt)); setOpen(false);}}
-              onClick={()=>{onChange(String(opt)); setOpen(false);}}
-              style={{
-                padding:"13px 14px", fontSize:16, cursor:"pointer",
-                color: String(opt)===String(value) ? C.accent : C.text,
-                background: String(opt)===String(value) ? "rgba(0,100,255,0.2)" : "transparent",
-                borderBottom:`1px solid rgba(0,100,200,0.15)`,
-                fontWeight: String(opt)===String(value) ? 700 : 400,
-              }}
-            >{opt}</div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
+// ── DatePicker: native select, iOS compatible ─────────────────────────────────
 function DatePicker({value, onChange, label}) {
   const parts = value ? value.split("-") : ["","",""];
   const y = parts[0]||""; const m = parts[1]||""; const d = parts[2]||"";
@@ -163,17 +116,54 @@ function DatePicker({value, onChange, label}) {
   const daysInMonth = (y&&m) ? new Date(Number(y),Number(m),0).getDate() : 31;
   const days   = Array.from({length:daysInMonth}, (_,i) => i+1);
 
-  function setY(v){ if(v&&m&&d) onChange(`${v}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`); else if(v) onChange(`${v}--`); }
-  function setM(v){ if(y&&v&&d) onChange(`${y}-${String(v).padStart(2,"0")}-${String(d).padStart(2,"0")}`); }
-  function setD(v){ if(y&&m&&v) onChange(`${y}-${String(m).padStart(2,"0")}-${String(v).padStart(2,"0")}`); }
+  function set(ny,nm,nd){
+    const yy=ny!==undefined?ny:y;
+    const mm=nm!==undefined?nm:m;
+    const dd=nd!==undefined?nd:d;
+    if(yy&&mm&&dd) onChange(`${yy}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`);
+  }
+
+  // Wrapper that makes native select fill entire touchable area
+  const SelWrap = ({children, flex}) => (
+    <div style={{flex:flex||1, position:"relative", minHeight:48}}>
+      {children}
+    </div>
+  );
+
+  const selStyle = {
+    position:"absolute", inset:0, width:"100%", height:"100%",
+    background:"rgba(0,20,70,0.9)", border:`1.5px solid ${C.border}`,
+    borderRadius:9, color:C.text,
+    fontSize:16, // prevents iOS zoom
+    outline:"none", fontFamily:"inherit",
+    WebkitAppearance:"menulist-button",
+    appearance:"menulist-button",
+    padding:"0 8px",
+    opacity:1,
+  };
 
   return (
     <div style={{marginBottom:10}}>
       {label&&<div style={{color:C.textDim,fontSize:11,fontWeight:600,letterSpacing:.7,textTransform:"uppercase",marginBottom:5}}>{label}</div>}
-      <div style={{display:"flex",gap:6}}>
-        <TapPicker options={years}  value={y} onChange={setY} placeholder="年"/>
-        <TapPicker options={months} value={Number(m)||""} onChange={setM} placeholder="月"/>
-        <TapPicker options={days}   value={Number(d)||""} onChange={setD} placeholder="日"/>
+      <div style={{display:"flex",gap:6,height:48}}>
+        <SelWrap flex={1.4}>
+          <select value={y} onChange={e=>set(e.target.value,undefined,undefined)} style={selStyle}>
+            <option value="">年</option>
+            {years.map(yr=><option key={yr} value={yr}>{yr}年</option>)}
+          </select>
+        </SelWrap>
+        <SelWrap>
+          <select value={m} onChange={e=>set(undefined,e.target.value,undefined)} style={selStyle}>
+            <option value="">月</option>
+            {months.map(mo=><option key={mo} value={mo}>{mo}月</option>)}
+          </select>
+        </SelWrap>
+        <SelWrap>
+          <select value={d} onChange={e=>set(undefined,undefined,e.target.value)} style={selStyle}>
+            <option value="">日</option>
+            {days.map(dy=><option key={dy} value={dy}>{dy}日</option>)}
+          </select>
+        </SelWrap>
       </div>
     </div>
   );
@@ -1077,9 +1067,48 @@ function AdminPage({catalog,setCatalog}) {
       {tab==="brands"&&(<div>
         <Card hi><H>新增品牌</H><div style={{display:"flex",gap:8}}><Input value={nb} onChange={e=>setNb(e.target.value)} placeholder="品牌名稱" style={{marginBottom:0}}/><Btn sm onClick={()=>{if(!nb)return;const id=nb.toLowerCase().replace(/\s+/g,"_")+"_"+Date.now();sc({...catalog,brands:[...catalog.brands,{id,name:nb,models:[]}]});setNb("");}}>新增</Btn></div></Card>
         {catalog.brands.map(b=>(<Card key={b.id}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}><span style={{color:C.text,fontWeight:700,fontSize:14}}>{b.name}</span><Btn v="danger" sm onClick={()=>{if(!confirm("刪除品牌？"))return;sc({...catalog,brands:catalog.brands.filter(x=>x.id!==b.id)});}}>刪除品牌</Btn></div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:9}}>{b.models.map(mo=>(<div key={mo} style={{display:"flex",gap:4,alignItems:"center",background:"rgba(0,50,125,0.28)",borderRadius:7,padding:"4px 10px"}}><span style={{color:C.textMid,fontSize:12}}>{mo}</span><button onClick={()=>sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:x.models.filter(m=>m!==mo)}:x)})} style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:12,padding:0}}>✕</button></div>))}</div>
-          {sb===b.id?(<div style={{display:"flex",gap:8}}><Input value={nm} onChange={e=>setNm(e.target.value)} placeholder="型號名稱" style={{marginBottom:0}}/><Btn sm onClick={()=>{if(!nm)return;sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:[...x.models,nm]}:x)});setNm("");}}>新增型號</Btn><Btn v="ghost" sm onClick={()=>setSb("")}>取消</Btn></div>):<Btn v="ghost" sm onClick={()=>setSb(b.id)}>＋ 新增型號</Btn>}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}>
+            <span style={{color:C.text,fontWeight:700,fontSize:14}}>{b.name}</span>
+            <Btn v="danger" sm onClick={()=>{if(!confirm("刪除品牌？"))return;sc({...catalog,brands:catalog.brands.filter(x=>x.id!==b.id)});}}>刪除品牌</Btn>
+          </div>
+          <div style={{color:C.textDim,fontSize:10,marginBottom:6}}>💡 點 ↑↓ 調整順序，點 ✕ 刪除</div>
+          <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:9}}>
+            {b.models.map((mo,idx)=>(
+              <div key={mo} style={{display:"flex",gap:4,alignItems:"center",background:"rgba(0,50,125,0.28)",borderRadius:8,padding:"6px 10px"}}>
+                {/* 上移 */}
+                <button
+                  onClick={()=>{
+                    if(idx===0) return;
+                    const ms=[...b.models]; [ms[idx-1],ms[idx]]=[ms[idx],ms[idx-1]];
+                    sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:ms}:x)});
+                  }}
+                  style={{background:"none",border:"none",color:idx===0?C.textDim:C.accent,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1}}
+                >↑</button>
+                {/* 下移 */}
+                <button
+                  onClick={()=>{
+                    if(idx===b.models.length-1) return;
+                    const ms=[...b.models]; [ms[idx],ms[idx+1]]=[ms[idx+1],ms[idx]];
+                    sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:ms}:x)});
+                  }}
+                  style={{background:"none",border:"none",color:idx===b.models.length-1?C.textDim:C.accent,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1}}
+                >↓</button>
+                <span style={{color:C.text,fontSize:13,flex:1}}>{mo}</span>
+                <button
+                  onClick={()=>sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:x.models.filter(m=>m!==mo)}:x)})}
+                  style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:14,padding:"0 4px"}}
+                >✕</button>
+              </div>
+            ))}
+          </div>
+          {sb===b.id
+            ?(<div style={{display:"flex",gap:8}}>
+                <Input value={nm} onChange={e=>setNm(e.target.value)} placeholder="型號名稱（新增在最前面）" style={{marginBottom:0}}/>
+                <Btn sm onClick={()=>{if(!nm)return;sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:[nm,...x.models]}:x)});setNm("");}}>新增型號</Btn>
+                <Btn v="ghost" sm onClick={()=>setSb("")}>取消</Btn>
+              </div>)
+            :<Btn v="ghost" sm onClick={()=>setSb(b.id)}>＋ 新增型號</Btn>
+          }
         </Card>))}
       </div>)}
 
