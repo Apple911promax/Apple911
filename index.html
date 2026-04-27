@@ -1299,7 +1299,7 @@ function ReportsPage({orders,purchases,expenses}) {
 
 // ─── SORTABLE LIST ────────────────────────────────────────────────────────────
 // 點選項目後，點插入點直接移到該位置
-function SortableList({ items, onReorder, onDelete, renderLabel }) {
+function SortableList({ items, onReorder, onDelete, renderLabel, onEdit }) {
   const [selected, setSelected] = useState(null);
 
   function insertAt(targetIdx) {
@@ -1410,9 +1410,47 @@ function SortableList({ items, onReorder, onDelete, renderLabel }) {
 }
 
 
+
+// ─── INLINE EDITABLE ITEM ─────────────────────────────────────────────────────
+// 雙擊或點鉛筆圖示可直接編輯文字
+function EditableText({value, onSave, style}) {
+  const [editing,setEditing] = useState(false);
+  const [val,setVal] = useState(value);
+
+  function save() {
+    if(val.trim() && val.trim()!==value) onSave(val.trim());
+    setEditing(false);
+  }
+
+  if(editing) return (
+    <div style={{display:"flex",gap:6,flex:1}}>
+      <input
+        value={val} onChange={e=>setVal(e.target.value)}
+        onKeyDown={e=>{if(e.key==="Enter")save();if(e.key==="Escape"){setVal(value);setEditing(false);}}}
+        autoFocus
+        style={{flex:1,background:"rgba(0,50,130,0.5)",border:`1.5px solid ${C.accent}`,
+          borderRadius:7,color:C.text,padding:"5px 9px",fontSize:13,outline:"none",fontFamily:"inherit"}}
+      />
+      <button onClick={save} style={{background:`linear-gradient(135deg,${C.accent2},${C.accent})`,
+        border:"none",borderRadius:7,color:"#fff",fontSize:11,fontWeight:700,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit"}}>✓</button>
+      <button onClick={()=>{setVal(value);setEditing(false);}} style={{background:"rgba(255,255,255,0.07)",
+        border:"none",borderRadius:7,color:C.textDim,fontSize:11,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+    </div>
+  );
+
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:6,flex:1,...style}}>
+      <span style={{color:C.text,fontSize:13,flex:1}}>{value}</span>
+      <button onClick={()=>{setVal(value);setEditing(true);}}
+        style={{background:"none",border:"none",color:C.textDim,cursor:"pointer",
+          fontSize:13,padding:"2px 6px",opacity:.6}}>✏️</button>
+    </div>
+  );
+}
+
 // ─── ADMIN PAGE (PIN protected) ───────────────────────────────────────────────
-function AdminPage({catalog,setCatalog}) {
-  const [unlocked,setUnlocked] = useState(false);
+function AdminPage({catalog,setCatalog,isBoss}) {
+  const [unlocked,setUnlocked] = useState(!!isBoss); // boss auto-unlocked
   const [pin,setPin]           = useState("");
   const [pinErr,setPinErr]     = useState(false);
   const [tab,setTab]           = useState("brands");
@@ -1569,6 +1607,13 @@ function AdminPage({catalog,setCatalog}) {
                           newSeries[idx]={...ser,models:ser.models.filter(m=>m!==mo)};
                           sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
                         }}
+                        onEdit={(_,mi,newVal)=>{
+                          const newSeries=[...bSeries];
+                          const newModels=[...ser.models];
+                          newModels[mi]=newVal;
+                          newSeries[idx]={...ser,models:newModels};
+                          sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
+                        }}
                       />
 
                       {/* 新增型號 */}
@@ -1616,6 +1661,7 @@ function AdminPage({catalog,setCatalog}) {
           items={catalog.vendors||[]}
           onReorder={arr=>sc({...catalog,vendors:arr})}
           onDelete={(_,i)=>sc({...catalog,vendors:(catalog.vendors||[]).filter((_,j)=>j!==i)})}
+          onEdit={(_,i,v)=>{const a=[...(catalog.vendors||[])];a[i]=v;sc({...catalog,vendors:a});}}
         /></Card>
         <Card>
           <H>📦 零件品項 & 型號（庫存用）</H>
@@ -1648,6 +1694,12 @@ function AdminPage({catalog,setCatalog}) {
                       onDelete={(_,vi)=>{
                         const cats=[...(catalog.purchaseCategories||DEF.purchaseCategories)];
                         cats[ci]={...catObj,variants:catObj.variants.filter((_,j)=>j!==vi)};
+                        sc({...catalog,purchaseCategories:cats});
+                      }}
+                      onEdit={(_,vi,v)=>{
+                        const cats=[...(catalog.purchaseCategories||DEF.purchaseCategories)];
+                        const vars=[...catObj.variants]; vars[vi]=v;
+                        cats[ci]={...catObj,variants:vars};
                         sc({...catalog,purchaseCategories:cats});
                       }}
                     />
@@ -1690,7 +1742,7 @@ function AdminPage({catalog,setCatalog}) {
           items={catalog.paymentMethods||DEF.paymentMethods}
           onReorder={arr=>sc({...catalog,paymentMethods:arr})}
           onDelete={(_,i)=>sc({...catalog,paymentMethods:(catalog.paymentMethods||DEF.paymentMethods).filter((_,j)=>j!==i)})}
-          renderLabel={p=><span>{PAY_STYLE[p]?.ic||"💳"} {p}</span>}
+          onEdit={(_,i,v)=>{const a=[...(catalog.paymentMethods||DEF.paymentMethods)];a[i]=v;sc({...catalog,paymentMethods:a});}}
         />
       </Card>)}
 
@@ -1701,6 +1753,7 @@ function AdminPage({catalog,setCatalog}) {
           items={catalog.expenseTypes||DEF.expenseTypes}
           onReorder={arr=>sc({...catalog,expenseTypes:arr})}
           onDelete={(_,i)=>sc({...catalog,expenseTypes:(catalog.expenseTypes||DEF.expenseTypes).filter((_,j)=>j!==i)})}
+          onEdit={(_,i,v)=>{const a=[...(catalog.expenseTypes||DEF.expenseTypes)];a[i]=v;sc({...catalog,expenseTypes:a});}}
         />
       </Card>)}
     </div>
@@ -1864,7 +1917,7 @@ function App() {
         {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog}/>}
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
         {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses}/>}
-        {page==="admin"    &&<AdminPage     catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}}/>}
+        {page==="admin"    &&<AdminPage     catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} isBoss={role==="boss"}/>}
       </div>
 
 
