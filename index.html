@@ -1303,50 +1303,54 @@ function AdminPage({catalog,setCatalog}) {
               }}>新增系列</Btn>
             </div>
 
-            {/* 系列列表 */}
-            {bSeries.map((ser,serIdx)=>(
-              <div key={ser.name} style={{marginBottom:12,background:"rgba(0,20,60,0.3)",borderRadius:10,padding:"10px 12px",border:`1px solid ${C.border}`}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                  <span style={{color:C.accent,fontWeight:700,fontSize:13}}>▸ {ser.name}</span>
-                  <button onClick={()=>{
-                    if(!confirm(`刪除「${ser.name}」系列？`))return;
-                    const newSeries=bSeries.filter((_,i)=>i!==serIdx);
-                    sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
-                  }} style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:12}}>✕ 刪除系列</button>
-                </div>
+            {/* 系列排序列表 */}
+            <SortableList
+              items={bSeries}
+              onReorder={newSeries=>sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)})}
+              onDelete={(ser)=>{
+                if(!confirm(`刪除「${ser.name}」系列及其所有型號？`))return;
+                sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:bSeries.filter(s=>s.name!==ser.name)}:x)});
+              }}
+              renderLabel={(ser,serIdx)=>{
+                const idx = bSeries.findIndex(s=>s.name===ser.name);
+                return (
+                  <div style={{width:"100%"}}>
+                    <div style={{color:C.accent,fontWeight:700,fontSize:13,marginBottom:6}}>▸ {ser.name}</div>
 
-                {/* 型號排序列表 */}
-                <SortableList
-                  items={ser.models}
-                  onReorder={newModels=>{
-                    const newSeries=[...bSeries];
-                    newSeries[serIdx]={...ser,models:newModels};
-                    sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
-                  }}
-                  onDelete={(mo)=>{
-                    const newSeries=[...bSeries];
-                    newSeries[serIdx]={...ser,models:ser.models.filter(m=>m!==mo)};
-                    sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
-                  }}
-                />
-
-                {/* 新增型號到此系列 */}
-                {sb===`${b.id}_${serIdx}`
-                  ?(<div style={{display:"flex",gap:6,marginTop:6}}>
-                      <Input value={nm} onChange={e=>setNm(e.target.value)} placeholder="型號名稱" style={{marginBottom:0}}/>
-                      <Btn sm onClick={()=>{
-                        if(!nm)return;
+                    {/* 型號排序列表 */}
+                    <SortableList
+                      items={ser.models}
+                      onReorder={newModels=>{
                         const newSeries=[...bSeries];
-                        newSeries[serIdx]={...ser,models:[...ser.models,nm]};
+                        newSeries[idx]={...ser,models:newModels};
                         sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
-                        setNm(""); setSb("");
-                      }}>新增</Btn>
-                      <Btn v="ghost" sm onClick={()=>setSb("")}>取消</Btn>
-                    </div>)
-                  :<Btn v="ghost" sm onClick={()=>setSb(`${b.id}_${serIdx}`)} style={{marginTop:6}}>＋ 新增型號</Btn>
-                }
-              </div>
-            ))}
+                      }}
+                      onDelete={(mo)=>{
+                        const newSeries=[...bSeries];
+                        newSeries[idx]={...ser,models:ser.models.filter(m=>m!==mo)};
+                        sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
+                      }}
+                    />
+
+                    {/* 新增型號 */}
+                    {sb===`${b.id}_${idx}`
+                      ?(<div style={{display:"flex",gap:6,marginTop:6}}>
+                          <Input value={nm} onChange={e=>setNm(e.target.value)} placeholder="型號名稱" style={{marginBottom:0}}/>
+                          <Btn sm onClick={()=>{
+                            if(!nm)return;
+                            const newSeries=[...bSeries];
+                            newSeries[idx]={...ser,models:[...ser.models,nm]};
+                            sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
+                            setNm(""); setSb("");
+                          }}>新增</Btn>
+                          <Btn v="ghost" sm onClick={()=>setSb("")}>取消</Btn>
+                        </div>)
+                      :<Btn v="ghost" sm onClick={()=>setSb(`${b.id}_${idx}`)} style={{marginTop:6}}>＋ 新增型號</Btn>
+                    }
+                  </div>
+                );
+              }}
+            />
           </Card>
         );})}
       </div>)}
