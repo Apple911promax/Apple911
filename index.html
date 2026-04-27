@@ -302,7 +302,7 @@ const ITEM_MAP = {
 // ─── DEFAULT CATALOG ──────────────────────────────────────────────────────────
 const DEF = {
   brands: [
-    { id:"apple", name:"Apple", series:[
+    { id:"apple_iphone", name:"Apple iPhone", series:[
       { name:"iPhone 16 系列", models:[
         "iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },
       { name:"iPhone 15 系列", models:[
@@ -317,63 +317,62 @@ const DEF = {
         "iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11"] },
       { name:"iPhone SE 系列", models:[
         "iPhone SE (3rd)","iPhone SE (2nd)"] },
+    ]},
+    { id:"apple_ipad", name:"Apple iPad", series:[
       { name:"iPad Pro 13吋", models:[
-        "A3360 - iPad Pro（13 吋，M5）Wi-Fi",
-        "A3361 - iPad Pro（13 吋，M5）Wi-Fi + 行動網路",
-        "A2925 - iPad Pro（13 吋，M4）Wi-Fi",
-        "A2926 - iPad Pro（13 吋，M4）Wi-Fi + 行動網路",
-        "A2436 - iPad Pro（12.9 吋，第 6 代）Wi-Fi",
-        "A2437 - iPad Pro（12.9 吋，第 6 代）Wi-Fi + 行動網路",
-        "A2378 - iPad Pro（12.9 吋，第 5 代）Wi-Fi",
-        "A2461 - iPad Pro（12.9 吋，第 5 代）Wi-Fi + 行動網路",
-        "A2229 - iPad Pro（12.9 吋，第 4 代）Wi-Fi",
-        "A2069 - iPad Pro（12.9 吋，第 4 代）Wi-Fi + 行動網路"] },
+        "A3360 - iPad Pro（13吋，M5）Wi-Fi",
+        "A3361 - iPad Pro（13吋，M5）Wi-Fi + 行動網路",
+        "A2925 - iPad Pro（13吋，M4）Wi-Fi",
+        "A2926 - iPad Pro（13吋，M4）Wi-Fi + 行動網路",
+        "A2436 - iPad Pro（12.9吋，第6代）Wi-Fi",
+        "A2437 - iPad Pro（12.9吋，第6代）Wi-Fi + 行動網路",
+        "A2378 - iPad Pro（12.9吋，第5代）Wi-Fi",
+        "A2461 - iPad Pro（12.9吋，第5代）Wi-Fi + 行動網路"] },
       { name:"iPad Pro 11吋", models:[
-        "A3357 - iPad Pro（11 吋，M5）Wi-Fi",
-        "A3358 - iPad Pro（11 吋，M5）Wi-Fi + 行動網路",
-        "A2836 - iPad Pro（11 吋，M4）Wi-Fi",
-        "A2837 - iPad Pro（11 吋，M4）Wi-Fi + 行動網路",
-        "A2759 - iPad Pro（11 吋，第 4 代）Wi-Fi",
-        "A2761 - iPad Pro（11 吋，第 4 代）Wi-Fi + 行動網路",
-        "A2377 - iPad Pro（11 吋，第 3 代）Wi-Fi",
-        "A2459 - iPad Pro（11 吋，第 3 代）Wi-Fi + 行動網路",
-        "A2228 - iPad Pro（11 吋，第 2 代）Wi-Fi",
-        "A2068 - iPad Pro（11 吋，第 2 代）Wi-Fi + 行動網路",
-        "A1980 - iPad Pro（11 吋，第 1 代）Wi-Fi",
-        "A2013 - iPad Pro（11 吋，第 1 代）Wi-Fi + 行動網路"] },
-      { name:"iPad Air", models:[
-        "A3461 - iPad Air（13 吋，M4）Wi-Fi",
-        "A3462 - iPad Air（13 吋，M4）Wi-Fi + 行動網路",
-        "A3459 - iPad Air（11 吋，M4）Wi-Fi",
-        "A3460 - iPad Air（11 吋，M4）Wi-Fi + 行動網路",
-        "A3268 - iPad Air（13 吋，M3）Wi-Fi",
-        "A3269 - iPad Air（13 吋，M3）Wi-Fi + 行動網路",
-        "A3266 - iPad Air（11 吋，M3）Wi-Fi",
-        "A3267 - iPad Air（11 吋，M3）Wi-Fi + 行動網路",
-        "A2898 - iPad Air（13 吋，M2）Wi-Fi",
-        "A2899 - iPad Air（13 吋，M2）Wi-Fi + 行動網路",
-        "A2902 - iPad Air（11 吋，M2）Wi-Fi",
-        "A2903 - iPad Air（11 吋，M2）Wi-Fi + 行動網路",
-        "A2588 - iPad Air（第 5 代）Wi-Fi",
-        "A2589 - iPad Air（第 5 代）Wi-Fi + 行動網路",
-        "A2316 - iPad Air（第 4 代）Wi-Fi",
-        "A2324 - iPad Air（第 4 代）Wi-Fi + 行動網路"] },
+        "A3357 - iPad Pro（11吋，M5）Wi-Fi",
+        "A3358 - iPad Pro（11吋，M5）Wi-Fi + 行動網路",
+        "A2836 - iPad Pro（11吋，M4）Wi-Fi",
+        "A2837 - iPad Pro（11吋，M4）Wi-Fi + 行動網路",
+        "A2759 - iPad Pro（11吋，第4代）Wi-Fi",
+        "A2761 - iPad Pro（11吋，第4代）Wi-Fi + 行動網路",
+        "A2377 - iPad Pro（11吋，第3代）Wi-Fi",
+        "A2459 - iPad Pro（11吋，第3代）Wi-Fi + 行動網路"] },
+      { name:"iPad Air 13吋", models:[
+        "A3461 - iPad Air（13吋，M4）Wi-Fi",
+        "A3462 - iPad Air（13吋，M4）Wi-Fi + 行動網路",
+        "A3268 - iPad Air（13吋，M3）Wi-Fi",
+        "A3269 - iPad Air（13吋，M3）Wi-Fi + 行動網路",
+        "A2898 - iPad Air（13吋，M2）Wi-Fi",
+        "A2899 - iPad Air（13吋，M2）Wi-Fi + 行動網路"] },
+      { name:"iPad Air 11吋", models:[
+        "A3459 - iPad Air（11吋，M4）Wi-Fi",
+        "A3460 - iPad Air（11吋，M4）Wi-Fi + 行動網路",
+        "A3266 - iPad Air（11吋，M3）Wi-Fi",
+        "A3267 - iPad Air（11吋，M3）Wi-Fi + 行動網路",
+        "A2902 - iPad Air（11吋，M2）Wi-Fi",
+        "A2903 - iPad Air（11吋，M2）Wi-Fi + 行動網路",
+        "A2588 - iPad Air（第5代）Wi-Fi",
+        "A2589 - iPad Air（第5代）Wi-Fi + 行動網路",
+        "A2316 - iPad Air（第4代）Wi-Fi",
+        "A2324 - iPad Air（第4代）Wi-Fi + 行動網路"] },
       { name:"iPad mini", models:[
         "A2993 - iPad mini（A17 Pro）Wi-Fi",
         "A2995 - iPad mini（A17 Pro）Wi-Fi + 行動網路",
-        "A2567 - iPad mini（第 6 代）Wi-Fi",
-        "A2568 - iPad mini（第 6 代）Wi-Fi + 行動網路",
-        "A2133 - iPad mini（第 5 代）Wi-Fi",
-        "A2124 - iPad mini（第 5 代）Wi-Fi + 行動網路"] },
+        "A2567 - iPad mini（第6代）Wi-Fi",
+        "A2568 - iPad mini（第6代）Wi-Fi + 行動網路",
+        "A2133 - iPad mini（第5代）Wi-Fi",
+        "A2124 - iPad mini（第5代）Wi-Fi + 行動網路"] },
       { name:"iPad", models:[
         "A3354 - iPad（A16）Wi-Fi",
         "A3355 - iPad（A16）Wi-Fi + 行動網路",
-        "A2696 - iPad（第 10 代）Wi-Fi",
-        "A2757 - iPad（第 10 代）Wi-Fi + 行動網路",
-        "A2602 - iPad（第 9 代）Wi-Fi",
-        "A2604 - iPad（第 9 代）Wi-Fi + 行動網路",
-        "A2270 - iPad（第 8 代）Wi-Fi",
-        "A2428 - iPad（第 8 代）Wi-Fi + 行動網路"] },
+        "A2696 - iPad（第10代）Wi-Fi",
+        "A2757 - iPad（第10代）Wi-Fi + 行動網路",
+        "A2602 - iPad（第9代）Wi-Fi",
+        "A2604 - iPad（第9代）Wi-Fi + 行動網路",
+        "A2270 - iPad（第8代）Wi-Fi",
+        "A2428 - iPad（第8代）Wi-Fi + 行動網路"] },
+    ]},
+    { id:"apple_mac", name:"Apple Mac", series:[
       { name:"MacBook Pro 16吋", models:[
         "A2991 - MacBook Pro 16吋 M3 Pro",
         "A2992 - MacBook Pro 16吋 M3 Max",
@@ -1561,7 +1560,25 @@ function App() {
   useEffect(()=>{
     const mergeCatalog = raw => {
       if(!raw) return DEF;
+
+      // 強制更新 iPad 和 MacBook 的系列資料（從 DEF 取最新 A 碼）
+      const appleDefault = DEF.brands.find(b=>b.id==="apple");
+      const iPadMacSeries = appleDefault?.series?.filter(s=>
+        s.name.includes("iPad") || s.name.includes("MacBook")
+      ) || [];
+
+      const updatedBrands = (raw.brands||DEF.brands).map(b => {
+        if (b.id !== "apple") return b;
+        const existingSeries = b.series || [];
+        // 保留非 iPad/MacBook 系列（iPhone 等），用最新的取代 iPad/MacBook
+        const nonIpadMac = existingSeries.filter(s =>
+          !s.name.includes("iPad") && !s.name.includes("MacBook")
+        );
+        return {...b, series: [...nonIpadMac, ...iPadMacSeries]};
+      });
+
       return {...DEF,...raw,
+        brands: updatedBrands,
         paymentMethods:raw.paymentMethods||DEF.paymentMethods,
         vendors:raw.vendors?.length?raw.vendors:DEF.vendors,
         purchaseItems:raw.purchaseItems||DEF.purchaseItems,
