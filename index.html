@@ -1046,86 +1046,110 @@ function ReportsPage({orders,purchases,expenses}) {
 
 
 // ─── SORTABLE LIST ────────────────────────────────────────────────────────────
-// 操作方式：點選項目選取（藍色），再點另一個項目交換位置
+// 點選項目後，點插入點直接移到該位置
 function SortableList({ items, onReorder, onDelete, renderLabel }) {
   const [selected, setSelected] = useState(null);
 
-  function handleTap(idx) {
-    if (selected === null) {
-      // 第一次點：選取
-      setSelected(idx);
-    } else if (selected === idx) {
-      // 點同一個：取消選取
-      setSelected(null);
-    } else {
-      // 點另一個：交換位置
-      const arr = [...items];
-      [arr[selected], arr[idx]] = [arr[idx], arr[selected]];
-      onReorder(arr);
-      setSelected(null);
+  function insertAt(targetIdx) {
+    if (selected === null) return;
+    if (selected === targetIdx || selected === targetIdx - 1) {
+      setSelected(null); return;
     }
+    const arr = [...items];
+    const [moved] = arr.splice(selected, 1);
+    const insertIdx = selected < targetIdx ? targetIdx - 1 : targetIdx;
+    arr.splice(insertIdx, 0, moved);
+    onReorder(arr);
+    setSelected(null);
   }
 
+  const selLabel = selected !== null
+    ? (typeof items[selected]==="string" ? items[selected] : (renderLabel ? renderLabel(items[selected]) : ""))
+    : "";
+
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+    <div style={{display:"flex",flexDirection:"column"}}>
+      {/* 提示 */}
       {selected !== null && (
         <div style={{
           background:"rgba(0,120,255,0.15)",border:`1px solid ${C.accent}`,
           borderRadius:9,padding:"8px 12px",fontSize:12,color:C.accent,
-          textAlign:"center",marginBottom:2,
+          textAlign:"center",marginBottom:6,
         }}>
-          ✅ 已選取「{typeof items[selected]==="string"?items[selected]:(renderLabel?renderLabel(items[selected]):items[selected])}」→ 點另一個項目交換位置
+          已選「{String(selLabel).slice(0,20)}」→ 點下方藍線插入到該位置
         </div>
       )}
+
+      {/* 最頂部插入點 */}
+      {selected !== null && selected !== 0 && (
+        <div onClick={()=>insertAt(0)} style={{
+          height:28,display:"flex",alignItems:"center",justifyContent:"center",
+          cursor:"pointer",marginBottom:3,
+        }}>
+          <div style={{width:"100%",height:3,background:C.accent,borderRadius:3,
+            boxShadow:`0 0 8px ${C.accent}`}}/>
+        </div>
+      )}
+
       {items.map((item, idx) => {
         const isSel = selected === idx;
-        const isTarget = selected !== null && selected !== idx;
         return (
-          <div
-            key={typeof item==="string" ? item : (item.id||idx)}
-            onClick={() => handleTap(idx)}
-            style={{
-              display:"flex", alignItems:"center", gap:8,
-              background: isSel
-                ? "rgba(0,120,255,0.3)"
-                : isTarget
-                  ? "rgba(0,80,180,0.2)"
-                  : "rgba(0,40,110,0.35)",
-              borderRadius:10,
-              border: isSel
-                ? `2px solid ${C.accent}`
-                : isTarget
-                  ? `1.5px dashed ${C.accent}`
-                  : `1px solid ${C.border}`,
-              padding:"12px 12px",
-              cursor:"pointer",
-              transition:"all .15s",
-              userSelect:"none",
-            }}
-          >
-            {/* Icon */}
-            <div style={{fontSize:18,flexShrink:0}}>
-              {isSel ? "✅" : isTarget ? "🔄" : "☰"}
-            </div>
-
-            {/* Label */}
-            <div style={{flex:1,fontSize:14,color:isSel?C.accent:C.text,fontWeight:isSel?700:400}}>
-              {renderLabel ? renderLabel(item) : String(item)}
-            </div>
-
-            {/* Delete */}
-            <button
-              onClick={e=>{e.stopPropagation();setSelected(null);onDelete(item,idx);}}
-              style={{
-                width:36,height:36,borderRadius:9,
-                border:`1px solid ${C.red}55`,
-                background:"rgba(255,50,80,0.15)",
-                color:C.red,cursor:"pointer",
-                fontSize:17,fontWeight:700,
-                display:"flex",alignItems:"center",justifyContent:"center",
-                flexShrink:0,
+          <div key={typeof item==="string"?item:(item.id||idx)}>
+            {/* 項目本體 */}
+            <div
+              onClick={()=>{
+                if (selected !== null && selected !== idx) return; // 等插入
+                setSelected(isSel ? null : idx);
               }}
-            >✕</button>
+              style={{
+                display:"flex",alignItems:"center",gap:8,
+                background: isSel ? "rgba(0,120,255,0.28)" : "rgba(0,40,110,0.35)",
+                borderRadius:10,
+                border: isSel ? `2px solid ${C.accent}` : `1px solid ${C.border}`,
+                padding:"12px 12px",cursor:"pointer",
+                transition:"all .15s",userSelect:"none",
+                marginBottom: selected !== null && selected !== idx ? 0 : 6,
+              }}
+            >
+              <div style={{fontSize:16,flexShrink:0,color:isSel?C.accent:C.textDim}}>
+                {isSel ? "✅" : "☰"}
+              </div>
+              <div style={{flex:1,fontSize:14,color:isSel?C.accent:C.text,fontWeight:isSel?700:400}}>
+                {renderLabel ? renderLabel(item) : String(item)}
+              </div>
+              <button
+                onClick={e=>{e.stopPropagation();setSelected(null);onDelete(item,idx);}}
+                style={{
+                  width:36,height:36,borderRadius:9,
+                  border:`1px solid ${C.red}55`,
+                  background:"rgba(255,50,80,0.15)",
+                  color:C.red,cursor:"pointer",fontSize:17,fontWeight:700,
+                  display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+                }}
+              >✕</button>
+            </div>
+
+            {/* 每個項目下方的插入點（選取模式才顯示） */}
+            {selected !== null && selected !== idx && selected !== idx+1 && (
+              <div onClick={()=>insertAt(idx+1)} style={{
+                height:28,display:"flex",alignItems:"center",
+                justifyContent:"center",cursor:"pointer",
+                marginBottom:3,
+              }}>
+                <div style={{
+                  width:"100%",height:3,
+                  background:"rgba(0,194,255,0.4)",borderRadius:3,
+                  transition:"background .15s",
+                }}
+                onMouseEnter={e=>e.currentTarget.style.background=C.accent}
+                onMouseLeave={e=>e.currentTarget.style.background="rgba(0,194,255,0.4)"}
+                />
+              </div>
+            )}
+            {/* 被選中的項目下方不顯示插入線（那就是原位） */}
+            {selected !== null && selected === idx && (
+              <div style={{marginBottom:6}}/>
+            )}
           </div>
         );
       })}
