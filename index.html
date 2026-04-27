@@ -13,6 +13,7 @@
   <style>
     *{-webkit-tap-highlight-color:transparent;box-sizing:border-box;}
     body{margin:0;padding:0;background:#050d1a;overscroll-behavior:none;-webkit-overflow-scrolling:touch;}
+    [data-handle]{touch-action:none;}
   </style>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -1045,82 +1046,148 @@ function ReportsPage({orders,purchases,expenses}) {
 }
 
 
-// ─── DRAG-SORT LIST (touch-friendly) ─────────────────────────────────────────
-function DragList({ items, onReorder, onDelete }) {
-  const [dragIdx, setDragIdx] = useState(null);
-  const [overIdx, setOverIdx] = useState(null);
+// ─── SORTABLE LIST ────────────────────────────────────────────────────────────
+// 使用 useEffect + 原生 DOM 事件（passive:false），iOS Safari 真正可用
+function SortableList({ items, onReorder, onDelete, renderLabel }) {
+  const [order, setOrder] = useState(items.map((_,i)=>i));
+  const [ghost, setGhost] = useState(null);   // {idx, y}
+  const containerRef = useState(null);
+  const stateRef = { items, onReorder, onDelete };
 
-  // Touch drag state
-  const touchStart = (idx) => {
-    setDragIdx(idx);
-  };
-  const touchMove = (e, containerRef) => {
-    if (dragIdx === null) return;
-    e.preventDefault();
-    const touch = e.touches[0];
-    const els = containerRef.current?.querySelectorAll('[data-row]');
-    if (!els) return;
-    for (let i = 0; i < els.length; i++) {
-      const rect = els[i].getBoundingClientRect();
-      if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
-        setOverIdx(i); break;
+  // Sync order when items change externally
+  useEffect(()=>{ setOrder(items.map((_,i)=>i)); }, [items.length, items.join?.("||")]);
+
+  useEffect(()=>{
+    const el = document.querySelector(`[data-sortid="${containerRef[0]}"]`);
+    if (!el) return;
+
+    let dragIdx = null;
+    let overIdx = null;
+    let startY  = 0;
+
+    function getRowHeight() {
+      const rows = el.querySelectorAll('[data-row]');
+      if (rows.length === 0) return 56;
+      return rows[0].getBoundingClientRect().height + 6; // height + gap
+    }
+
+    function getIdxFromY(clientY) {
+      const rows = el.querySelectorAll('[data-row]');
+      for (let i=0;i<rows.length;i++) {
+        const r = rows[i].getBoundingClientRect();
+        if (clientY >= r.top && clientY <= r.bottom) return i;
+      }
+      // clamp to edges
+      if (rows.length === 0) return null;
+      const first = rows[0].getBoundingClientRect();
+      const last  = rows[rows.length-1].getBoundingClientRect();
+      if (clientY < first.top) return 0;
+      if (clientY > last.bottom) return rows.length-1;
+      return null;
+    }
+
+    function onTouchStart(e) {
+      const handle = e.target.closest('[data-handle]');
+      if (!handle) return;
+      const row = handle.closest('[data-row]');
+      if (!row) return;
+      dragIdx = parseInt(row.getAttribute('data-row'));
+      overIdx = dragIdx;
+      startY  = e.touches[0].clientY;
+      row.style.opacity = '0.4';
+    }
+
+    function onTouchMove(e) {
+      if (dragIdx === null) return;
+      e.preventDefault(); // stops page scroll - only works with passive:false
+      const y = e.touches[0].clientY;
+      const over = getIdxFromY(y);
+      if (over !== null && over !== overIdx) {
+        // Highlight target row
+        el.querySelectorAll('[data-row]').forEach(r=>{
+          r.style.background = '';
+          r.style.border = '';
+        });
+        const targetRow = el.querySelector(`[data-row="${over}"]`);
+        if (targetRow) {
+          targetRow.style.background = 'rgba(0,160,255,0.25)';
+          targetRow.style.border = '1.5px solid #00c2ff';
+        }
+        overIdx = over;
       }
     }
-  };
-  const touchEnd = () => {
-    if (dragIdx !== null && overIdx !== null && dragIdx !== overIdx) {
-      const arr = [...items];
-      const [moved] = arr.splice(dragIdx, 1);
-      arr.splice(overIdx, 0, moved);
-      onReorder(arr);
-    }
-    setDragIdx(null); setOverIdx(null);
-  };
 
-  const containerRef = { current: null };
+    function onTouchEnd(e) {
+      if (dragIdx === null) return;
+      // Reset styles
+      el.querySelectorAll('[data-row]').forEach(r=>{
+        r.style.opacity=''; r.style.background=''; r.style.border='';
+      });
+      if (overIdx !== null && dragIdx !== overIdx) {
+        const cur = stateRef.items;
+        const arr = [...cur];
+        const [moved] = arr.splice(dragIdx,1);
+        arr.splice(overIdx,0,moved);
+        stateRef.onReorder(arr);
+      }
+      dragIdx=null; overIdx=null;
+    }
+
+    el.addEventListener('touchstart', onTouchStart, {passive:true});
+    el.addEventListener('touchmove',  onTouchMove,  {passive:false}); // KEY: passive:false
+    el.addEventListener('touchend',   onTouchEnd,   {passive:true});
+
+    return ()=>{
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove',  onTouchMove);
+      el.removeEventListener('touchend',   onTouchEnd);
+    };
+  }, [items.length]);
+
+  // Use a stable container ID
+  const cid = useState(()=>Math.random().toString(36).slice(2))[0];
 
   return (
-    <div
-      ref={el => containerRef.current = el}
-      onTouchMove={e => touchMove(e, containerRef)}
-      onTouchEnd={touchEnd}
-      style={{ display:"flex", flexDirection:"column", gap:5 }}
-    >
-      {items.map((mo, idx) => (
+    <div data-sortid={cid} style={{display:"flex",flexDirection:"column",gap:6}}>
+      {items.map((item,idx)=>(
         <div
-          key={mo}
+          key={typeof item==="string"?item:(item.id||idx)}
           data-row={idx}
           style={{
-            display:"flex", alignItems:"center", gap:8,
-            background: overIdx===idx && dragIdx!==null
-              ? "rgba(0,150,255,0.25)"
-              : dragIdx===idx
-                ? "rgba(0,100,255,0.35)"
-                : "rgba(0,50,125,0.28)",
-            borderRadius:9, padding:"9px 10px",
-            border:`1.5px solid ${overIdx===idx && dragIdx!==null ? C.accent : C.border}`,
-            transition:"background .15s",
-            opacity: dragIdx===idx ? 0.6 : 1,
+            display:"flex",alignItems:"center",gap:8,
+            background:"rgba(0,40,110,0.35)",borderRadius:10,
+            border:`1px solid ${C.border}`,padding:"11px 10px",
+            transition:"background .15s,border .15s",
           }}
         >
-          {/* Drag handle */}
+          {/* Drag handle - large touch target */}
           <div
-            onTouchStart={()=>touchStart(idx)}
+            data-handle="1"
             style={{
-              color: C.textDim, fontSize:18, cursor:"grab",
-              padding:"0 4px", userSelect:"none",
-              WebkitUserSelect:"none", touchAction:"none",
+              fontSize:22,color:C.textDim,
+              padding:"4px 8px",flexShrink:0,
+              cursor:"grab",userSelect:"none",
+              WebkitUserSelect:"none",
+              lineHeight:1,
             }}
-          >☰</div>
-          <span style={{color:C.text, fontSize:13, flex:1}}>{mo}</span>
+          >⠿</div>
+
+          {/* Label */}
+          <div style={{flex:1,fontSize:14,color:C.text,lineHeight:1.5}}>
+            {renderLabel ? renderLabel(item) : String(item)}
+          </div>
+
+          {/* Delete */}
           <button
-            onClick={()=>onDelete(mo)}
+            onClick={()=>onDelete(item,idx)}
             style={{
-              background:"rgba(255,50,80,0.15)", border:`1px solid ${C.red}44`,
-              borderRadius:"50%", color:C.red, cursor:"pointer",
-              fontSize:13, width:24, height:24,
-              display:"flex", alignItems:"center", justifyContent:"center",
-              fontWeight:700, flexShrink:0,
+              width:36,height:36,borderRadius:9,
+              border:`1px solid ${C.red}55`,
+              background:"rgba(255,50,80,0.15)",
+              color:C.red,cursor:"pointer",
+              fontSize:17,fontWeight:700,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              flexShrink:0,
             }}
           >✕</button>
         </div>
@@ -1128,6 +1195,7 @@ function DragList({ items, onReorder, onDelete }) {
     </div>
   );
 }
+
 
 // ─── ADMIN PAGE (PIN protected) ───────────────────────────────────────────────
 function AdminPage({catalog,setCatalog}) {
@@ -1177,8 +1245,8 @@ function AdminPage({catalog,setCatalog}) {
             <span style={{color:C.text,fontWeight:700,fontSize:14}}>{b.name}</span>
             <Btn v="danger" sm onClick={()=>{if(!confirm("刪除品牌？"))return;sc({...catalog,brands:catalog.brands.filter(x=>x.id!==b.id)});}}>刪除品牌</Btn>
           </div>
-          <div style={{color:C.textDim,fontSize:10,marginBottom:8}}>💡 拖曳 ☰ 可自由排序，點 ✕ 刪除</div>
-          <DragList
+          <div style={{color:C.textDim,fontSize:10,marginBottom:8}}>▲▼ 調整順序　✕ 刪除</div>
+          <SortableList
             items={b.models}
             onReorder={newModels=>sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:newModels}:x)})}
             onDelete={mo=>sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:x.models.filter(m=>m!==mo)}:x)})}
@@ -1210,22 +1278,37 @@ function AdminPage({catalog,setCatalog}) {
       </div>)}
 
       {tab==="vendors"&&(<div>
-        <Card><H>零件廠商</H>{addRow(nv,()=>{if(!nv)return;sc({...catalog,vendors:[...catalog.vendors,nv]});setNv("");},setNv,"廠商名稱")}{(catalog.vendors||[]).map((v,i)=>(<div key={i} style={rowSt}><span style={{color:C.textMid}}>{v}</span><Btn v="danger" sm onClick={()=>sc({...catalog,vendors:(catalog.vendors||[]).filter((_,j)=>j!==i)})}>刪</Btn></div>))}</Card>
-        <Card><H>📦 零件品項（進貨 & 庫存用）</H>{addRow(npi,()=>{if(!npi)return;sc({...catalog,purchaseItems:[...(catalog.purchaseItems||DEF.purchaseItems),npi]});setNpi("");},setNpi,"品項名稱（如：螢幕、電池）")}{(catalog.purchaseItems||DEF.purchaseItems).map((c,i)=>(<div key={i} style={rowSt}><span style={{color:C.textMid}}>{c}</span><Btn v="danger" sm onClick={()=>sc({...catalog,purchaseItems:(catalog.purchaseItems||DEF.purchaseItems).filter((_,j)=>j!==i)})}>刪</Btn></div>))}</Card>
+        <Card><H>零件廠商</H>{addRow(nv,()=>{if(!nv)return;sc({...catalog,vendors:[...catalog.vendors,nv]});setNv("");},setNv,"廠商名稱")}<SortableList
+          items={catalog.vendors||[]}
+          onReorder={arr=>sc({...catalog,vendors:arr})}
+          onDelete={(_,i)=>sc({...catalog,vendors:(catalog.vendors||[]).filter((_,j)=>j!==i)})}
+        /></Card>
+        <Card><H>📦 零件品項（進貨 & 庫存用）</H>{addRow(npi,()=>{if(!npi)return;sc({...catalog,purchaseItems:[...(catalog.purchaseItems||DEF.purchaseItems),npi]});setNpi("");},setNpi,"品項名稱（如：螢幕、電池）")}<SortableList
+          items={catalog.purchaseItems||DEF.purchaseItems}
+          onReorder={arr=>sc({...catalog,purchaseItems:arr})}
+          onDelete={(_,i)=>sc({...catalog,purchaseItems:(catalog.purchaseItems||DEF.purchaseItems).filter((_,j)=>j!==i)})}
+        /></Card>
       </div>)}
 
       {tab==="payments"&&(<Card>
         <H>付款方式</H>
         {addRow(np,()=>{if(!np)return;sc({...catalog,paymentMethods:[...(catalog.paymentMethods||DEF.paymentMethods),np]});setNp("");},setNp,"付款方式名稱")}
-        <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:8}}>
-          {(catalog.paymentMethods||DEF.paymentMethods).map((p,i)=>(<div key={i} style={{display:"flex",gap:5,alignItems:"center",background:"rgba(0,60,140,0.3)",borderRadius:20,padding:"6px 14px",border:`1px solid ${C.border}`}}><span style={{color:C.text,fontSize:13}}>{PAY_STYLE[p]?.ic||"💳"} {p}</span><button onClick={()=>sc({...catalog,paymentMethods:(catalog.paymentMethods||DEF.paymentMethods).filter((_,j)=>j!==i)})} style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:13,padding:0,marginLeft:4}}>✕</button></div>))}
-        </div>
+        <SortableList
+          items={catalog.paymentMethods||DEF.paymentMethods}
+          onReorder={arr=>sc({...catalog,paymentMethods:arr})}
+          onDelete={(_,i)=>sc({...catalog,paymentMethods:(catalog.paymentMethods||DEF.paymentMethods).filter((_,j)=>j!==i)})}
+          renderLabel={p=><span>{PAY_STYLE[p]?.ic||"💳"} {p}</span>}
+        />
       </Card>)}
 
       {tab==="expenses"&&(<Card>
         <H>固定支出類別</H>
         {addRow(net,()=>{if(!net)return;sc({...catalog,expenseTypes:[...(catalog.expenseTypes||DEF.expenseTypes),net]});setNet("");},setNet,"支出類別名稱")}
-        {(catalog.expenseTypes||DEF.expenseTypes).map((t,i)=>(<div key={i} style={rowSt}><span style={{color:C.textMid}}>{t}</span><Btn v="danger" sm onClick={()=>sc({...catalog,expenseTypes:(catalog.expenseTypes||DEF.expenseTypes).filter((_,j)=>j!==i)})}>刪</Btn></div>))}
+        <SortableList
+          items={catalog.expenseTypes||DEF.expenseTypes}
+          onReorder={arr=>sc({...catalog,expenseTypes:arr})}
+          onDelete={(_,i)=>sc({...catalog,expenseTypes:(catalog.expenseTypes||DEF.expenseTypes).filter((_,j)=>j!==i)})}
+        />
       </Card>)}
     </div>
   );
