@@ -1221,7 +1221,8 @@ function AdminPage({catalog,setCatalog}) {
   const [pin,setPin]           = useState("");
   const [pinErr,setPinErr]     = useState(false);
   const [tab,setTab]           = useState("brands");
-  const [nb,setNb]=useState(""); const [sb,setSb]=useState(catalog.brands[0]?.id||""); const [nm,setNm]=useState("");
+  const [nb,setNb]=useState(""); const [sb,setSb]=useState(""); const [nm,setNm]=useState("");
+  const [newSeriesName, setNewSeriesName] = useState({});  // {brandId: "text"}
   const [ni,setNi]=useState({name:"",cat:RCATS[0],defaultCost:"",defaultPrice:"",stockItem:""});
   const [nv,setNv]=useState(""); const [np,setNp]=useState(""); const [npi,setNpi]=useState(""); const [net,setNet]=useState("");
 
@@ -1286,19 +1287,21 @@ function AdminPage({catalog,setCatalog}) {
             <div style={{color:C.text,fontWeight:700,fontSize:14,marginBottom:10}}>{b.name}</div>
 
             {/* 新增系列 */}
-            {sb===b.id && sb.startsWith?.("ser_") ? null :
-              <div style={{display:"flex",gap:6,marginBottom:10}}>
-                <Input value={sb===`ns_${b.id}`?nm:""} onChange={e=>setNm(e.target.value)}
-                  placeholder="新增系列（如：iPhone 17 系列）" style={{marginBottom:0}}
-                  onFocus={()=>setSb(`ns_${b.id}`)}/>
-                <Btn sm onClick={()=>{
-                  if(!nm)return;
-                  const newSer={name:nm,models:[]};
-                  sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:[...(x.series||[]),newSer]}:x)});
-                  setNm(""); setSb("");
-                }}>新增系列</Btn>
-              </div>
-            }
+            <div style={{display:"flex",gap:6,marginBottom:10}}>
+              <Input
+                value={newSeriesName[b.id]||""}
+                onChange={e=>setNewSeriesName(prev=>({...prev,[b.id]:e.target.value}))}
+                placeholder="新增系列（如：iPhone 17 系列）"
+                style={{marginBottom:0}}
+              />
+              <Btn sm onClick={()=>{
+                const name=(newSeriesName[b.id]||"").trim();
+                if(!name)return;
+                const newSer={name,models:[]};
+                sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:[...(x.series||[]),newSer]}:x)});
+                setNewSeriesName(prev=>({...prev,[b.id]:""}));
+              }}>新增系列</Btn>
+            </div>
 
             {/* 系列列表 */}
             {bSeries.map((ser,serIdx)=>(
