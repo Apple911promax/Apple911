@@ -656,7 +656,38 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock}) {
           </div>
         )}
         {(model==="_custom"||brand==="_custom"||(brand&&modelList.length===0))&&(
-          <Input label={brand==="_custom"?"品牌名稱":"手動輸入型號"} value={modelFree} onChange={e=>setModelFree(e.target.value)} placeholder="輸入型號名稱"/>
+          <div style={{marginBottom:10,position:"relative"}}>
+            <div style={{color:C.textDim,fontSize:11,fontWeight:600,letterSpacing:.7,textTransform:"uppercase",marginBottom:5}}>{brand==="_custom"?"品牌名稱":"手動輸入型號"}</div>
+            <input
+              value={modelFree}
+              onChange={e=>setModelFree(e.target.value)}
+              placeholder="輸入型號名稱（自動提示）"
+              style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit"}}
+              onFocus={e=>e.target.style.borderColor=C.accent}
+              onBlur={e=>e.target.style.borderColor=C.border}
+            />
+            {/* 自動建議選項 */}
+            {modelFree.length>=1 && (() => {
+              const allModels = (catalog.brands||[]).flatMap(b=>(b.series||[]).flatMap(s=>s.models));
+              const suggestions = allModels.filter(m=>m.toLowerCase().includes(modelFree.toLowerCase()) && m!==modelFree).slice(0,6);
+              if(!suggestions.length) return null;
+              return (
+                <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:999,background:"rgba(5,15,50,0.98)",border:`1.5px solid ${C.accent}`,borderRadius:10,overflow:"hidden",boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}>
+                  {suggestions.map(s=>(
+                    <div key={s} onTouchEnd={e=>{e.preventDefault();setModelFree(s);setModel(s);}} onClick={()=>{setModelFree(s);setModel(s);}}
+                      style={{padding:"11px 14px",fontSize:13,color:C.text,cursor:"pointer",borderBottom:`1px solid rgba(0,100,200,0.15)`}}
+                    >
+                      {s.split(new RegExp(`(${modelFree})`, "gi")).map((part,i)=>
+                        part.toLowerCase()===modelFree.toLowerCase()
+                          ? <span key={i} style={{color:C.accent,fontWeight:700}}>{part}</span>
+                          : part
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
         )}
         <DatePicker label="日期" value={date} onChange={setDate}/>
         <Input label="客戶姓名 / 電話" value={customer} onChange={e=>setCustomer(e.target.value)} placeholder="選填（姓名 / 電話）"/>
@@ -1366,8 +1397,12 @@ function SortableList({ items, onReorder, onDelete, renderLabel, onEdit }) {
               <div style={{fontSize:16,flexShrink:0,color:isSel?C.accent:C.textDim}}>
                 {isSel ? "✅" : "☰"}
               </div>
-              <div style={{flex:1,fontSize:14,color:isSel?C.accent:C.text,fontWeight:isSel?700:400}}>
-                {renderLabel ? renderLabel(item) : String(item)}
+              <div style={{flex:1,minWidth:0}} onClick={e=>e.stopPropagation()}>
+                {renderLabel ? renderLabel(item) : (
+                  onEdit
+                    ? <EditableText value={String(item)} onSave={v=>onEdit(item,idx,v)}/>
+                    : <span style={{color:isSel?C.accent:C.text,fontSize:13,fontWeight:isSel?700:400}}>{String(item)}</span>
+                )}
               </div>
               <button
                 onClick={e=>{e.stopPropagation();setSelected(null);onDelete(item,idx);}}
