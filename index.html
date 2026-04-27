@@ -302,7 +302,7 @@ const ITEM_MAP = {
 // ─── DEFAULT CATALOG ──────────────────────────────────────────────────────────
 const DEF = {
   brands: [
-    { id:"apple_iphone", name:"Apple iPhone", series:[
+    { id:"apple_iphone", name:"iPhone", series:[
       { name:"iPhone 16 系列", models:[
         "iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },
       { name:"iPhone 15 系列", models:[
@@ -318,7 +318,7 @@ const DEF = {
       { name:"iPhone SE 系列", models:[
         "iPhone SE (3rd)","iPhone SE (2nd)"] },
     ]},
-    { id:"apple_ipad", name:"Apple iPad", series:[
+    { id:"apple_ipad", name:"iPad", series:[
       { name:"iPad Pro 13吋", models:[
         "A3360 - iPad Pro（13吋，M5）Wi-Fi",
         "A3361 - iPad Pro（13吋，M5）Wi-Fi + 行動網路",
@@ -372,7 +372,7 @@ const DEF = {
         "A2270 - iPad（第8代）Wi-Fi",
         "A2428 - iPad（第8代）Wi-Fi + 行動網路"] },
     ]},
-    { id:"apple_mac", name:"Apple Mac", series:[
+    { id:"apple_mac", name:"Mac", series:[
       { name:"MacBook Pro 16吋", models:[
         "A2991 - MacBook Pro 16吋 M3 Pro",
         "A2992 - MacBook Pro 16吋 M3 Max",
@@ -436,6 +436,28 @@ const DEF = {
   ],
   vendors:       ["駿霆","上湛","即時通","淘寶","其他廠商"],
   paymentMethods:["現金","Line Pay","轉帳","街口支付","信用卡"],
+  purchaseCategories: [
+    { cat:"電池", variants:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14","iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini","iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini","iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","iPad Pro 13吋","iPad Pro 11吋","iPad Air","iPad mini","iPad","MacBook Pro 16吋","MacBook Pro 14吋","MacBook Air 15吋","MacBook Air 13吋","其他"] },
+    { cat:"螢幕", variants:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14","iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini","iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini","iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","iPad Pro 13吋","iPad Pro 11吋","iPad Air","iPad mini","iPad","MacBook Pro 16吋","MacBook Pro 14吋","MacBook Air","其他"] },
+    { cat:"後鏡頭", variants:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14","iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini","iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini","iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","其他"] },
+    { cat:"前鏡頭", variants:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14","iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini","iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini","iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","其他"] },
+    { cat:"尾插", variants:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14","iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini","iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini","iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","其他"] },
+    { cat:"主板", variants:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14","iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini","iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini","iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","iPad Pro 13吋","iPad Pro 11吋","MacBook Pro 16吋","MacBook Pro 14吋","MacBook Air","其他"] },
+    { cat:"充電IC", variants:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14","iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini","iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini","iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","其他"] },
+    { cat:"背蓋", variants:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14","iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini","iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini","iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","其他"] },
+    { cat:"中框", variants:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14","iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini","iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini","iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","其他"] },
+    { cat:"按鍵", variants:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14","iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini","iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini","iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","其他"] },
+    { cat:"保護貼", variants:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14","iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini","iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini","iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","iPad Pro 13吋","iPad Pro 11吋","iPad Air","iPad mini","iPad","MacBook Pro","MacBook Air","其他"] },
+    { cat:"手機殼", variants:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14","iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini","iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini","iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","其他"] },
+    { cat:"充電線", variants:["USB-C","Lightning","MagSafe","其他"] },
+    { cat:"快充頭", variants:["20W","30W","65W 氮化鎵","其他"] },
+    { cat:"螺絲耗材", variants:["通用"] },
+    { cat:"防水膠", variants:["通用"] },
+    { cat:"包裝袋", variants:["通用"] },
+    { cat:"維修工具", variants:["通用"] },
+    { cat:"清潔用品", variants:["通用"] },
+    { cat:"其他", variants:["通用"] },
+  ],
   purchaseItems: ["螢幕","電池","後鏡頭","前鏡頭","尾插","主板","充電IC","背蓋","中框","按鍵","螺絲耗材","防水膠","包裝袋","維修工具","清潔用品","其他"],
   expenseTypes:  ["房租","電信費","台電電費","水費","網路費","保險費","廣告費","其他固定支出"],
 };
@@ -499,22 +521,23 @@ const Tag = ({children,color}) => <span style={{background:`${color||C.accent}22
 // ─── STOCK CALCULATOR ─────────────────────────────────────────────────────────
 function useStock(purchases, orders, catalog) {
   return useMemo(() => {
-    const items = catalog.purchaseItems || DEF.purchaseItems;
-    const result = {};
-    items.forEach(it => {
-      // Total purchased quantity
-      const totalIn = purchases
-        .filter(p => (p.itemName||p.item) === it)
-        .reduce((a,p) => a + (Number(p.qty)||1), 0);
-      // Total used in orders (via stockItem mapping on repairItems)
-      const linkedRepairs = (catalog.repairItems||DEF.repairItems)
-        .filter(r => r.stockItem === it)
-        .map(r => r.name);
-      const totalUsed = orders.reduce((a,o) => {
-        const used = (o.items||[]).filter(i => linkedRepairs.includes(i.name)).length;
-        return a + used;
-      }, 0);
-      result[it] = { totalIn, totalUsed, stock: totalIn - totalUsed };
+    const cats = catalog.purchaseCategories || DEF.purchaseCategories;
+    const result = {}; // key = "cat__variant"
+
+    cats.forEach(({cat, variants}) => {
+      variants.forEach(variant => {
+        const key = cat + "__" + variant;
+        // Total in: purchases with matching cat+variant
+        const totalIn = purchases
+          .filter(p => (p.itemCat||p.item)===cat && (p.itemVariant||p.itemName||"")===variant)
+          .reduce((a,p) => a+(Number(p.qty)||1), 0);
+        // Used in orders: match by stockItem = cat (simplified)
+        const linkedRepairs = (catalog.repairItems||DEF.repairItems)
+          .filter(r => r.stockItem === cat)
+          .map(r => r.name);
+        const totalUsed = 0; // variant-level usage tracking for future
+        result[key] = { cat, variant, totalIn, totalUsed, stock: totalIn - totalUsed };
+      });
     });
     return result;
   }, [purchases, orders, catalog]);
@@ -873,16 +896,16 @@ function OrdersPage({orders,setOrders,catalog,stock}) {
 function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   const [fy,setFy] = useState(nowYM().y);
   const [fm,setFm] = useState(nowYM().m);
-  const [form,setForm] = useState({date:today(),vendor:"",customVendor:"",item:"",customItem:"",qty:"1",amount:"",note:""});
+  const [form,setForm] = useState({date:today(),vendor:"",customVendor:"",itemCat:"",itemVariant:"",customVariant:"",qty:"1",amount:"",note:""});
   const purchaseItems = catalog.purchaseItems||DEF.purchaseItems;
 
   function add(){
-    if(!form.amount)return;
-    const vendorName=form.vendor==="_custom"?form.customVendor:form.vendor;
-    const itemName  =form.item==="_custom"  ?form.customItem  :form.item;
-    const rec={...form,id:uid(),amount:Number(form.amount),qty:Number(form.qty)||1,vendorName,itemName};
+    if(!form.amount||!form.itemCat)return;
+    const vendorName  =form.vendor==="_custom"?form.customVendor:form.vendor;
+    const itemVariant =form.itemVariant==="_custom"?form.customVariant:form.itemVariant;
+    const rec={...form,id:uid(),amount:Number(form.amount),qty:Number(form.qty)||1,vendorName,itemName:form.itemCat,itemCat:form.itemCat,itemVariant};
     const next=[...purchases,rec]; setPurchases(next); save(SK.purchases,next);
-    setForm(f=>({...f,vendor:"",customVendor:"",item:"",customItem:"",qty:"1",amount:"",note:""}));
+    setForm(f=>({...f,vendor:"",customVendor:"",itemCat:"",itemVariant:"",customVariant:"",qty:"1",amount:"",note:""}));
   }
   function del(id){const next=purchases.filter(p=>p.id!==id);setPurchases(next);save(SK.purchases,next);}
 
@@ -905,16 +928,37 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
         </Sel>
         {form.vendor==="_custom"&&<Input placeholder="廠商名稱" value={form.customVendor} onChange={e=>setForm(f=>({...f,customVendor:e.target.value}))}/>}
 
-        <Sel label="零件品項" value={form.item} onChange={e=>setForm(f=>({...f,item:e.target.value}))}>
+        {/* 品項大類 */}
+        <Sel label="零件品項" value={form.itemCat} onChange={e=>setForm(f=>({...f,itemCat:e.target.value,itemVariant:"",customVariant:""}))}>
           <option value="">選擇品項</option>
-          {purchaseItems.map(it=>{
-            const s=stock?.[it];
-            const stockLabel=s?` （目前庫存: ${s.stock}）`:"";
-            return <option key={it} value={it}>{it}{stockLabel}</option>;
-          })}
-          <option value="_custom">✏️ 手動輸入品項</option>
+          {(catalog.purchaseCategories||DEF.purchaseCategories).map(({cat})=>(
+            <option key={cat} value={cat}>{cat}</option>
+          ))}
         </Sel>
-        {form.item==="_custom"&&<Input placeholder="品項名稱" value={form.customItem} onChange={e=>setForm(f=>({...f,customItem:e.target.value}))}/>}
+
+        {/* 型號（依品項動態載入） */}
+        {form.itemCat && (() => {
+          const catObj = (catalog.purchaseCategories||DEF.purchaseCategories).find(x=>x.cat===form.itemCat);
+          const variants = catObj?.variants || [];
+          const stockKey = form.itemCat+"__"+(form.itemVariant||"");
+          const stockQty = stock?.[stockKey]?.stock;
+          return (
+            <div>
+              <Sel label="型號 / 規格" value={form.itemVariant} onChange={e=>setForm(f=>({...f,itemVariant:e.target.value}))}>
+                <option value="">選擇型號</option>
+                {variants.map(v=>{
+                  const sk=stock?.[form.itemCat+"__"+v];
+                  const qty=sk?.stock??null;
+                  return <option key={v} value={v}>{v}{qty!==null?` （庫存: ${qty}）`:""}</option>;
+                })}
+                <option value="_custom">✏️ 手動輸入型號</option>
+              </Sel>
+              {form.itemVariant==="_custom"&&(
+                <Input placeholder="型號名稱" value={form.customVariant} onChange={e=>setForm(f=>({...f,customVariant:e.target.value}))}/>
+              )}
+            </div>
+          );
+        })()}
 
         <div style={{display:"flex",gap:8}}>
           <div style={{flex:1}}><Input label="數量" type="number" value={form.qty} onChange={e=>setForm(f=>({...f,qty:e.target.value}))} placeholder="1"/></div>
@@ -981,62 +1025,109 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
 
 // ─── INVENTORY PAGE ───────────────────────────────────────────────────────────
 function InventoryPage({stock,catalog}) {
-  const items = catalog.purchaseItems||DEF.purchaseItems;
-  const lowItems = items.filter(it=>(stock[it]?.stock||0)<=2);
+  const [filterCat,setFilterCat] = useState("全部");
+  const cats = catalog.purchaseCategories || DEF.purchaseCategories;
+  const catNames = ["全部", ...cats.map(x=>x.cat)];
+
+  // All stock items
+  const allItems = Object.values(stock);
+  const filtered = filterCat==="全部"
+    ? allItems
+    : allItems.filter(x=>x.cat===filterCat);
+
+  const lowItems  = allItems.filter(x=>x.totalIn>0 && x.stock<=2);
+  const zeroItems = allItems.filter(x=>x.totalIn>0 && x.stock<=0);
 
   return (
     <div>
+      {/* 警示 */}
       {lowItems.length>0&&(
-        <Card style={{border:`1.5px solid ${C.red}`,background:"rgba(255,40,70,0.1)"}}>
+        <Card style={{border:`1.5px solid ${C.red}`,background:"rgba(255,40,70,0.08)"}}>
           <H>🚨 庫存預警 — 需補貨</H>
           <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-            {lowItems.map(it=>(
-              <div key={it} style={{background:"rgba(255,40,70,0.15)",border:`1px solid ${C.red}`,borderRadius:10,padding:"8px 14px",textAlign:"center"}}>
-                <div style={{color:C.red,fontWeight:800,fontSize:14}}>{it}</div>
-                <div style={{color:"#ff8899",fontSize:12}}>剩 {stock[it]?.stock||0} 個</div>
+            {lowItems.map(x=>(
+              <div key={x.cat+"__"+x.variant} style={{background:"rgba(255,40,70,0.15)",border:`1px solid ${C.red}`,borderRadius:10,padding:"8px 14px",textAlign:"center"}}>
+                <div style={{color:C.red,fontWeight:800,fontSize:13}}>{x.cat}</div>
+                <div style={{color:"#ff8899",fontSize:11}}>{x.variant}</div>
+                <div style={{color:C.red,fontSize:12,fontWeight:700}}>剩 {x.stock} 個</div>
               </div>
             ))}
           </div>
         </Card>
       )}
 
-      <Card>
-        <H>📦 庫存總覽</H>
-        <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
-          {/* header */}
-          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:4,padding:"6px 10px",background:"rgba(0,40,100,0.3)",borderRadius:8}}>
-            <span style={{color:C.textDim,fontSize:11,fontWeight:700}}>品項</span>
-            <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"center"}}>進貨</span>
-            <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"center"}}>已用</span>
-            <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"center"}}>庫存</span>
-          </div>
-          {items.map(it=>{
-            const s=stock[it]||{totalIn:0,totalUsed:0,stock:0};
-            const low=s.stock<=2;
-            const zero=s.stock<=0;
-            return (
-              <div key={it} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:4,padding:"10px 10px",background:zero?"rgba(255,40,70,0.08)":low?"rgba(255,140,0,0.07)":"rgba(0,30,80,0.3)",borderRadius:10,border:`1px solid ${zero?C.red:low?C.orange:C.border}`}}>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{color:C.text,fontSize:13,fontWeight:600}}>{it}</span>
-                  {zero&&<span style={{fontSize:10,color:C.red,fontWeight:800}}>缺貨</span>}
-                  {!zero&&low&&<span style={{fontSize:10,color:C.orange,fontWeight:800}}>⚠️ 少</span>}
-                </div>
-                <span style={{color:C.green,fontSize:14,fontWeight:700,textAlign:"center"}}>{s.totalIn}</span>
-                <span style={{color:C.textMid,fontSize:14,textAlign:"center"}}>{s.totalUsed}</span>
-                <span style={{color:zero?C.red:low?C.orange:C.accent,fontSize:16,fontWeight:800,textAlign:"center"}}>{s.stock}</span>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
+      {/* 品項篩選 */}
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}}>
+        {catNames.map(n=>(
+          <button key={n} onClick={()=>setFilterCat(n)} style={{
+            padding:"5px 12px",borderRadius:16,border:"none",cursor:"pointer",
+            fontSize:12,fontWeight:600,fontFamily:"inherit",
+            background:filterCat===n?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(255,255,255,0.06)",
+            color:filterCat===n?"#fff":C.textMid,
+          }}>{n}</button>
+        ))}
+      </div>
 
-      <Card style={{background:"rgba(0,30,80,0.25)"}}>
-        <div style={{color:C.textDim,fontSize:11,lineHeight:1.8}}>
+      {/* 依品項分組顯示 */}
+      {(filterCat==="全部" ? cats : cats.filter(x=>x.cat===filterCat)).map(({cat,variants})=>{
+        const catItems = variants.map(v=>({
+          ...( stock[cat+"__"+v] || {cat,variant:v,totalIn:0,totalUsed:0,stock:0} )
+        })).filter(x=>x.totalIn>0 || true); // show all
+
+        const hasStock = catItems.some(x=>x.totalIn>0);
+
+        return (
+          <Card key={cat}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <H style={{marginBottom:0}}>{cat}</H>
+              <span style={{color:C.textDim,fontSize:11}}>
+                共 {catItems.reduce((a,x)=>a+x.stock,0)} 件庫存
+              </span>
+            </div>
+
+            {/* Header */}
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:4,padding:"5px 8px",background:"rgba(0,40,100,0.3)",borderRadius:7,marginBottom:6}}>
+              <span style={{color:C.textDim,fontSize:11,fontWeight:700}}>型號</span>
+              <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"center"}}>進貨</span>
+              <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"center"}}>已用</span>
+              <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"center"}}>庫存</span>
+            </div>
+
+            {catItems.map(x=>{
+              const zero = x.stock<=0;
+              const low  = !zero && x.stock<=2;
+              return (
+                <div key={x.variant} style={{
+                  display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:4,
+                  padding:"9px 8px",borderRadius:9,marginBottom:4,
+                  background:x.totalIn===0?"rgba(0,20,50,0.2)":zero?"rgba(255,40,70,0.08)":low?"rgba(255,140,0,0.07)":"rgba(0,30,80,0.3)",
+                  border:`1px solid ${x.totalIn===0?C.border:zero?C.red:low?C.orange:C.border}`,
+                }}>
+                  <div style={{display:"flex",alignItems:"center",gap:5}}>
+                    <span style={{color:x.totalIn===0?C.textDim:C.text,fontSize:12}}>{x.variant}</span>
+                    {zero&&x.totalIn>0&&<span style={{fontSize:9,color:C.red,fontWeight:800}}>缺貨</span>}
+                    {low&&<span style={{fontSize:9,color:C.orange,fontWeight:800}}>⚠️</span>}
+                  </div>
+                  <span style={{color:x.totalIn>0?C.green:C.textDim,fontSize:13,fontWeight:700,textAlign:"center"}}>{x.totalIn||"-"}</span>
+                  <span style={{color:C.textMid,fontSize:13,textAlign:"center"}}>{x.totalUsed||"-"}</span>
+                  <span style={{color:zero?C.red:low?C.orange:x.totalIn>0?C.accent:C.textDim,fontSize:14,fontWeight:800,textAlign:"center"}}>
+                    {x.totalIn>0?x.stock:"-"}
+                  </span>
+                </div>
+              );
+            })}
+          </Card>
+        );
+      })}
+
+      <Card style={{background:"rgba(0,30,80,0.2)"}}>
+        <div style={{color:C.textDim,fontSize:11,lineHeight:1.9}}>
           <b style={{color:C.textMid}}>說明：</b><br/>
-          • <b style={{color:C.green}}>進貨</b> = 累計進貨總數量<br/>
-          • <b style={{color:C.textMid}}>已用</b> = 工單中使用的筆數<br/>
+          • <b style={{color:C.green}}>進貨</b> = 累計進貨數量<br/>
+          • <b style={{color:C.textMid}}>已用</b> = 工單使用數量<br/>
           • <b style={{color:C.accent}}>庫存</b> = 進貨 − 已用<br/>
-          • <b style={{color:C.red}}>紅色 / ⚠️</b> = 庫存 ≤ 2，建議補貨
+          • <b style={{color:C.orange}}>⚠️</b> = 庫存 ≤ 2，建議補貨<br/>
+          • <b style={{color:C.red}}>缺貨</b> = 庫存為 0
         </div>
       </Card>
     </div>
@@ -1495,11 +1586,70 @@ function AdminPage({catalog,setCatalog}) {
           onReorder={arr=>sc({...catalog,vendors:arr})}
           onDelete={(_,i)=>sc({...catalog,vendors:(catalog.vendors||[]).filter((_,j)=>j!==i)})}
         /></Card>
-        <Card><H>📦 零件品項（進貨 & 庫存用）</H>{addRow(npi,()=>{if(!npi)return;sc({...catalog,purchaseItems:[...(catalog.purchaseItems||DEF.purchaseItems),npi]});setNpi("");},setNpi,"品項名稱（如：螢幕、電池）")}<SortableList
-          items={catalog.purchaseItems||DEF.purchaseItems}
-          onReorder={arr=>sc({...catalog,purchaseItems:arr})}
-          onDelete={(_,i)=>sc({...catalog,purchaseItems:(catalog.purchaseItems||DEF.purchaseItems).filter((_,j)=>j!==i)})}
-        /></Card>
+        <Card>
+          <H>📦 零件品項 & 型號（庫存用）</H>
+          <div style={{color:C.textDim,fontSize:11,marginBottom:10}}>點品項展開，可新增/刪除型號</div>
+          {(catalog.purchaseCategories||DEF.purchaseCategories).map((catObj,ci)=>{
+            const colKey="picol_"+catObj.cat;
+            const collapsed=!!newSeriesName[colKey];
+            return(
+              <div key={catObj.cat} style={{marginBottom:8,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+                {/* 品項標題 */}
+                <div onClick={()=>setNewSeriesName(p=>({...p,[colKey]:!p[colKey]}))}
+                  style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                    padding:"10px 12px",background:"rgba(0,40,100,0.3)",cursor:"pointer",userSelect:"none"}}>
+                  <span style={{color:C.text,fontWeight:700}}>{catObj.cat}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{color:C.textDim,fontSize:11}}>{catObj.variants.length} 型號</span>
+                    <span style={{color:C.accent,fontSize:16,transform:collapsed?"rotate(0)":"rotate(180deg)",transition:"transform .2s",display:"inline-block"}}>⌃</span>
+                  </div>
+                </div>
+                {/* 型號列表 */}
+                {!collapsed&&(
+                  <div style={{padding:"10px 12px"}}>
+                    <SortableList
+                      items={catObj.variants}
+                      onReorder={arr=>{
+                        const cats=[...(catalog.purchaseCategories||DEF.purchaseCategories)];
+                        cats[ci]={...catObj,variants:arr};
+                        sc({...catalog,purchaseCategories:cats});
+                      }}
+                      onDelete={(_,vi)=>{
+                        const cats=[...(catalog.purchaseCategories||DEF.purchaseCategories)];
+                        cats[ci]={...catObj,variants:catObj.variants.filter((_,j)=>j!==vi)};
+                        sc({...catalog,purchaseCategories:cats});
+                      }}
+                    />
+                    {/* 新增型號 */}
+                    {sb===`pi_${ci}`?(
+                      <div style={{display:"flex",gap:6,marginTop:6}}>
+                        <Input value={nm} onChange={e=>setNm(e.target.value)} placeholder="型號名稱（如：iPhone 15 Pro）" style={{marginBottom:0}}/>
+                        <Btn sm onClick={()=>{if(!nm)return;
+                          const cats=[...(catalog.purchaseCategories||DEF.purchaseCategories)];
+                          cats[ci]={...catObj,variants:[...catObj.variants,nm]};
+                          sc({...catalog,purchaseCategories:cats});
+                          setNm("");setSb("");
+                        }}>新增</Btn>
+                        <Btn v="ghost" sm onClick={()=>setSb("")}>取消</Btn>
+                      </div>
+                    ):<Btn v="ghost" sm onClick={()=>setSb(`pi_${ci}`)} style={{marginTop:6}}>＋ 新增型號</Btn>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {/* 新增品項大類 */}
+          <div style={{marginTop:10}}>
+            <div style={{color:C.textDim,fontSize:11,marginBottom:6}}>新增品項大類</div>
+            {addRow(npi,()=>{
+              if(!npi)return;
+              const cats=[...(catalog.purchaseCategories||DEF.purchaseCategories)];
+              cats.push({cat:npi,variants:["通用"]});
+              sc({...catalog,purchaseCategories:cats});
+              setNpi("");
+            },setNpi,"品項名稱（如：電容、喇叭）")}
+          </div>
+        </Card>
       </div>)}
 
       {tab==="payments"&&(<Card>
@@ -1550,6 +1700,7 @@ function App() {
       paymentMethods:s.paymentMethods||DEF.paymentMethods,
       vendors:s.vendors?.length?s.vendors:DEF.vendors,
       purchaseItems:s.purchaseItems||DEF.purchaseItems,
+        purchaseCategories:s.purchaseCategories||DEF.purchaseCategories,
       expenseTypes:s.expenseTypes||DEF.expenseTypes,
     };
   });
@@ -1562,26 +1713,13 @@ function App() {
       if(!raw) return DEF;
 
       // 強制更新 iPad 和 MacBook 的系列資料（從 DEF 取最新 A 碼）
-      const appleDefault = DEF.brands.find(b=>b.id==="apple");
-      const iPadMacSeries = appleDefault?.series?.filter(s=>
-        s.name.includes("iPad") || s.name.includes("MacBook")
-      ) || [];
-
-      const updatedBrands = (raw.brands||DEF.brands).map(b => {
-        if (b.id !== "apple") return b;
-        const existingSeries = b.series || [];
-        // 保留非 iPad/MacBook 系列（iPhone 等），用最新的取代 iPad/MacBook
-        const nonIpadMac = existingSeries.filter(s =>
-          !s.name.includes("iPad") && !s.name.includes("MacBook")
-        );
-        return {...b, series: [...nonIpadMac, ...iPadMacSeries]};
-      });
-
+      const appleDefault = null; // iPad/Mac now separate brands
       return {...DEF,...raw,
-        brands: updatedBrands,
+        brands: raw.brands||DEF.brands,
         paymentMethods:raw.paymentMethods||DEF.paymentMethods,
         vendors:raw.vendors?.length?raw.vendors:DEF.vendors,
         purchaseItems:raw.purchaseItems||DEF.purchaseItems,
+        purchaseCategories:raw.purchaseCategories||DEF.purchaseCategories,
         expenseTypes:raw.expenseTypes||DEF.expenseTypes,
       };
     };
@@ -1614,7 +1752,7 @@ function App() {
   const {y:ny,m:nm}=nowYM();
   const mRev =orders.filter(o=>o.date?.slice(0,7)===mkey(ny,nm)).reduce((a,o)=>a+o.totalRevenue,0);
   const mProf=orders.filter(o=>o.date?.slice(0,7)===mkey(ny,nm)).reduce((a,o)=>a+o.profit,0);
-  const lowCount = (catalog.purchaseItems||DEF.purchaseItems).filter(it=>(stock[it]?.stock||0)<=2).length;
+  const lowCount = Object.values(stock).filter(x=>x.totalIn>0&&x.stock<=2).length;
   const NAV = role==="boss" ? NAV_ALL : NAV_STAFF;
 
   if (!loggedIn) return <LoginScreen onLogin={(r)=>{setLoggedIn(true);setRole(r);}} />;
