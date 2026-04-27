@@ -107,21 +107,37 @@ const MZ   = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10
 function DatePicker({value, onChange, label}) {
   const parts = value ? value.split("-") : ["","",""];
   const y = parts[0]||""; const m = parts[1]||""; const d = parts[2]||"";
+
+  // 年份：從 2025 開始，到今年+2（自動延伸）
   const thisY = new Date().getFullYear();
-  const years = Array.from({length:6},(_,i)=>thisY-i);
+  const startY = 2025;
+  const endY   = thisY + 2;
+  const years  = Array.from({length: endY - startY + 1}, (_,i) => startY + i);
   const months = Array.from({length:12},(_,i)=>i+1);
   const daysInMonth = (y&&m) ? new Date(Number(y),Number(m),0).getDate() : 31;
   const days = Array.from({length:daysInMonth},(_,i)=>i+1);
-  const selSt2 = {background:"rgba(0,20,70,0.9)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 10px",fontSize:14,outline:"none",fontFamily:"inherit",flex:1};
+
+  // iOS Safari fix: use fontSize 16px to prevent zoom, and explicit height
+  const selSt2 = {
+    background:"rgba(0,20,70,0.9)",
+    border:`1px solid ${C.border}`,
+    borderRadius:8, color:C.text,
+    padding:"10px 6px", fontSize:16,  // 16px 防止 iOS 自動縮放
+    outline:"none", fontFamily:"inherit",
+    flex:1, WebkitAppearance:"menulist",
+    appearance:"menulist", minHeight:44,  // iOS 觸控最小高度
+  };
+
   function set(ny,nm,nd){
     const yy=ny||y; const mm=nm||m; const dd=nd||d;
     if(yy&&mm&&dd) onChange(`${yy}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`);
   }
+
   return (
     <div style={{marginBottom:10}}>
       {label&&<div style={{color:C.textDim,fontSize:11,fontWeight:600,letterSpacing:.7,textTransform:"uppercase",marginBottom:5}}>{label}</div>}
       <div style={{display:"flex",gap:6}}>
-        <select value={y} onChange={e=>set(e.target.value,m,d)} style={selSt2}>
+        <select value={y} onChange={e=>set(e.target.value,m,d)} style={{...selSt2,flex:1.4}}>
           <option value="">年</option>
           {years.map(yr=><option key={yr} value={yr}>{yr}</option>)}
         </select>
@@ -173,7 +189,7 @@ function LoginScreen({ onLogin }) {
       <div style={{position:"fixed",bottom:-80,right:-60,width:350,height:350,background:"radial-gradient(circle,rgba(0,150,255,0.08),transparent 65%)",pointerEvents:"none"}}/>
 
       <div style={{marginBottom:24}}>
-        <img src={LOGO_SRC} alt="Apple 911"
+        <img src={window.LOGO_PLACEHOLDER} alt="Apple 911"
           style={{width:110,height:110,borderRadius:24,boxShadow:"0 0 40px rgba(0,120,255,0.5)",display:"block"}}/>
       </div>
 
@@ -1164,7 +1180,7 @@ function App() {
         {/* Title bar */}
         <div style={{display:"flex",alignItems:"center",padding:"0 16px",height:50,gap:12}}>
           <div style={{width:40,height:40,borderRadius:10,overflow:"hidden",flexShrink:0,boxShadow:"0 0 18px rgba(0,150,255,0.5)"}}>
-              <img src={LOGO_SRC} alt="Apple 911 HZ" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+              <img src="LOGO_SRC" alt="Apple 911 HZ" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
             </div>
           <div>
             <div style={{display:"flex",alignItems:"center",gap:7}}>
