@@ -896,7 +896,7 @@ function OrdersPage({orders,setOrders,catalog,stock}) {
 function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   const [fy,setFy] = useState(nowYM().y);
   const [fm,setFm] = useState(nowYM().m);
-  const [form,setForm] = useState({date:today(),vendor:"",customVendor:"",itemCat:"",itemVariant:"",customVariant:"",qty:"1",amount:"",note:""});
+  const [form,setForm] = useState({date:today(),vendor:"",customVendor:"",itemCat:"",itemVariant:"",customVariant:"",_brandId:"",_seriesName:"",qty:"1",amount:"",note:""});
   const purchaseItems = catalog.purchaseItems||DEF.purchaseItems;
 
   function add(){
@@ -905,7 +905,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
     const itemVariant =form.itemVariant==="_custom"?form.customVariant:form.itemVariant;
     const rec={...form,id:uid(),amount:Number(form.amount),qty:Number(form.qty)||1,vendorName,itemName:form.itemCat,itemCat:form.itemCat,itemVariant};
     const next=[...purchases,rec]; setPurchases(next); save(SK.purchases,next);
-    setForm(f=>({...f,vendor:"",customVendor:"",itemCat:"",itemVariant:"",customVariant:"",qty:"1",amount:"",note:""}));
+    setForm(f=>({...f,vendor:"",customVendor:"",itemCat:"",itemVariant:"",customVariant:"",_brandId:"",_seriesName:"",qty:"1",amount:"",note:""}));
   }
   function del(id){const next=purchases.filter(p=>p.id!==id);setPurchases(next);save(SK.purchases,next);}
 
@@ -936,25 +936,45 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
           ))}
         </Sel>
 
-        {/* 型號（依品項動態載入） */}
+        {/* 型號：用品牌→系列→型號三層選擇 */}
         {form.itemCat && (() => {
-          const catObj = (catalog.purchaseCategories||DEF.purchaseCategories).find(x=>x.cat===form.itemCat);
-          const variants = catObj?.variants || [];
-          const stockKey = form.itemCat+"__"+(form.itemVariant||"");
-          const stockQty = stock?.[stockKey]?.stock;
+          const allBrands = catalog.brands||DEF.brands;
+          // 找出有 series 的品牌
+          const brandsWithSeries = allBrands.filter(b=>b.series?.length>0);
+          const selBrand = brandsWithSeries.find(b=>b.id===form._brandId);
+          const selSeriesObj = selBrand?.series?.find(s=>s.name===form._seriesName);
+
           return (
             <div>
-              <Sel label="型號 / 規格" value={form.itemVariant} onChange={e=>setForm(f=>({...f,itemVariant:e.target.value}))}>
-                <option value="">選擇型號</option>
-                {variants.map(v=>{
-                  const sk=stock?.[form.itemCat+"__"+v];
-                  const qty=sk?.stock??null;
-                  return <option key={v} value={v}>{v}{qty!==null?` （庫存: ${qty}）`:""}</option>;
-                })}
-                <option value="_custom">✏️ 手動輸入型號</option>
+              {/* 品牌選擇 */}
+              <Sel label="品牌" value={form._brandId||""} onChange={e=>setForm(f=>({...f,_brandId:e.target.value,_seriesName:"",itemVariant:""}))}>
+                <option value="">選擇品牌（或直接手動輸入）</option>
+                {brandsWithSeries.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
               </Sel>
-              {form.itemVariant==="_custom"&&(
-                <Input placeholder="型號名稱" value={form.customVariant} onChange={e=>setForm(f=>({...f,customVariant:e.target.value}))}/>
+
+              {/* 系列選擇 */}
+              {selBrand&&(
+                <Sel label="系列" value={form._seriesName||""} onChange={e=>setForm(f=>({...f,_seriesName:e.target.value,itemVariant:""}))}>
+                  <option value="">選擇系列</option>
+                  {selBrand.series.map(s=><option key={s.name} value={s.name}>{s.name}</option>)}
+                </Sel>
+              )}
+
+              {/* 型號選擇，顯示庫存 */}
+              {selSeriesObj&&(
+                <Sel label="型號" value={form.itemVariant||""} onChange={e=>setForm(f=>({...f,itemVariant:e.target.value}))}>
+                  <option value="">選擇型號</option>
+                  {selSeriesObj.models.map(m=>{
+                    const sk=stock?.[form.itemCat+"__"+m];
+                    const qty=sk?.stock??null;
+                    return <option key={m} value={m}>{m}{qty!==null?` （庫存: ${qty}）`:""}</option>;
+                  })}
+                </Sel>
+              )}
+
+              {/* 手動輸入型號（不選品牌時） */}
+              {!form._brandId&&(
+                <Input label="手動輸入型號" placeholder="如：iPhone 15 Pro、通用" value={form.itemVariant} onChange={e=>setForm(f=>({...f,itemVariant:e.target.value}))}/>
               )}
             </div>
           );
@@ -1026,6 +1046,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
 // ─── INVENTORY PAGE ───────────────────────────────────────────────────────────
 function InventoryPage({stock,catalog}) {
   const [filterCat,setFilterCat] = useState("全部");
+  const [invCollapsed,setInvCollapsed] = useState({});
   const cats = catalog.purchaseCategories || DEF.purchaseCategories;
   const catNames = ["全部", ...cats.map(x=>x.cat)];
 
@@ -1056,69 +1077,79 @@ function InventoryPage({stock,catalog}) {
         </Card>
       )}
 
-      {/* 品項篩選 */}
-      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}}>
-        {catNames.map(n=>(
-          <button key={n} onClick={()=>setFilterCat(n)} style={{
-            padding:"5px 12px",borderRadius:16,border:"none",cursor:"pointer",
-            fontSize:12,fontWeight:600,fontFamily:"inherit",
-            background:filterCat===n?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(255,255,255,0.06)",
-            color:filterCat===n?"#fff":C.textMid,
-          }}>{n}</button>
-        ))}
-      </div>
-
-      {/* 依品項分組顯示 */}
+      {/* 依品項分組顯示，可收合 */}
       {(filterCat==="全部" ? cats : cats.filter(x=>x.cat===filterCat)).map(({cat,variants})=>{
         const catItems = variants.map(v=>({
           ...( stock[cat+"__"+v] || {cat,variant:v,totalIn:0,totalUsed:0,stock:0} )
-        })).filter(x=>x.totalIn>0 || true); // show all
-
-        const hasStock = catItems.some(x=>x.totalIn>0);
+        }));
+        const totalStock = catItems.reduce((a,x)=>a+x.stock,0);
+        const hasAny = catItems.some(x=>x.totalIn>0);
+        const colKey = "inv_col_"+cat;
+        const collapsed = !!invCollapsed[colKey];
 
         return (
-          <Card key={cat}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <H style={{marginBottom:0}}>{cat}</H>
-              <span style={{color:C.textDim,fontSize:11}}>
-                共 {catItems.reduce((a,x)=>a+x.stock,0)} 件庫存
-              </span>
+          <Card key={cat} style={{padding:0,overflow:"hidden",marginBottom:8}}>
+            {/* 標題列 — 點擊收合 */}
+            <div
+              onClick={()=>setInvCollapsed(p=>({...p,[colKey]:!p[colKey]}))}
+              style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                padding:"13px 16px",cursor:"pointer",userSelect:"none",
+                background:"rgba(0,40,100,0.3)"}}
+            >
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{color:C.accent,fontWeight:800,fontSize:14}}>{cat}</span>
+                <span style={{color:C.textDim,fontSize:11}}>
+                  {hasAny?`${totalStock} 件`:"未進貨"}
+                </span>
+                {catItems.some(x=>x.totalIn>0&&x.stock<=0)&&
+                  <span style={{color:C.red,fontSize:10,fontWeight:700}}>缺貨⚠️</span>}
+                {catItems.some(x=>x.totalIn>0&&x.stock>0&&x.stock<=2)&&
+                  <span style={{color:C.orange,fontSize:10,fontWeight:700}}>庫存低⚠️</span>}
+              </div>
+              <span style={{color:C.accent,fontSize:18,
+                transform:collapsed?"rotate(0deg)":"rotate(180deg)",
+                transition:"transform .2s",display:"inline-block"}}>⌃</span>
             </div>
 
-            {/* Header */}
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:4,padding:"5px 8px",background:"rgba(0,40,100,0.3)",borderRadius:7,marginBottom:6}}>
-              <span style={{color:C.textDim,fontSize:11,fontWeight:700}}>型號</span>
-              <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"center"}}>進貨</span>
-              <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"center"}}>已用</span>
-              <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"center"}}>庫存</span>
-            </div>
-
-            {catItems.map(x=>{
-              const zero = x.stock<=0;
-              const low  = !zero && x.stock<=2;
-              return (
-                <div key={x.variant} style={{
-                  display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:4,
-                  padding:"9px 8px",borderRadius:9,marginBottom:4,
-                  background:x.totalIn===0?"rgba(0,20,50,0.2)":zero?"rgba(255,40,70,0.08)":low?"rgba(255,140,0,0.07)":"rgba(0,30,80,0.3)",
-                  border:`1px solid ${x.totalIn===0?C.border:zero?C.red:low?C.orange:C.border}`,
-                }}>
-                  <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <span style={{color:x.totalIn===0?C.textDim:C.text,fontSize:12}}>{x.variant}</span>
-                    {zero&&x.totalIn>0&&<span style={{fontSize:9,color:C.red,fontWeight:800}}>缺貨</span>}
-                    {low&&<span style={{fontSize:9,color:C.orange,fontWeight:800}}>⚠️</span>}
-                  </div>
-                  <span style={{color:x.totalIn>0?C.green:C.textDim,fontSize:13,fontWeight:700,textAlign:"center"}}>{x.totalIn||"-"}</span>
-                  <span style={{color:C.textMid,fontSize:13,textAlign:"center"}}>{x.totalUsed||"-"}</span>
-                  <span style={{color:zero?C.red:low?C.orange:x.totalIn>0?C.accent:C.textDim,fontSize:14,fontWeight:800,textAlign:"center"}}>
-                    {x.totalIn>0?x.stock:"-"}
-                  </span>
+            {/* 展開內容 */}
+            {!collapsed&&(
+              <div style={{padding:"10px 14px"}}>
+                {/* Header row */}
+                <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:4,padding:"5px 8px",background:"rgba(0,40,100,0.3)",borderRadius:7,marginBottom:6}}>
+                  <span style={{color:C.textDim,fontSize:11,fontWeight:700}}>型號</span>
+                  <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"center"}}>進貨</span>
+                  <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"center"}}>已用</span>
+                  <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"center"}}>庫存</span>
                 </div>
-              );
-            })}
+                {catItems.map(x=>{
+                  const zero=x.stock<=0&&x.totalIn>0;
+                  const low=!zero&&x.stock<=2&&x.totalIn>0;
+                  return(
+                    <div key={x.variant} style={{
+                      display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:4,
+                      padding:"8px 8px",borderRadius:9,marginBottom:4,
+                      background:x.totalIn===0?"rgba(0,20,50,0.15)":zero?"rgba(255,40,70,0.08)":low?"rgba(255,140,0,0.07)":"rgba(0,30,80,0.25)",
+                      border:`1px solid ${x.totalIn===0?"transparent":zero?C.red:low?C.orange:C.border}`,
+                    }}>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <span style={{color:x.totalIn===0?C.textDim:C.text,fontSize:12}}>{x.variant}</span>
+                        {zero&&<span style={{fontSize:9,color:C.red,fontWeight:800}}>缺貨</span>}
+                        {low&&<span style={{fontSize:9,color:C.orange,fontWeight:800}}>⚠️</span>}
+                      </div>
+                      <span style={{color:x.totalIn>0?C.green:C.textDim,fontSize:13,fontWeight:700,textAlign:"center"}}>{x.totalIn>0?x.totalIn:"-"}</span>
+                      <span style={{color:C.textMid,fontSize:13,textAlign:"center"}}>{x.totalUsed>0?x.totalUsed:"-"}</span>
+                      <span style={{color:zero?C.red:low?C.orange:x.totalIn>0?C.accent:C.textDim,fontSize:14,fontWeight:800,textAlign:"center"}}>
+                        {x.totalIn>0?x.stock:"-"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </Card>
         );
       })}
+
 
       <Card style={{background:"rgba(0,30,80,0.2)"}}>
         <div style={{color:C.textDim,fontSize:11,lineHeight:1.9}}>
@@ -1714,8 +1745,19 @@ function App() {
 
       // 強制更新 iPad 和 MacBook 的系列資料（從 DEF 取最新 A 碼）
       const appleDefault = null; // iPad/Mac now separate brands
+      // Force update brand names from DEF (handles old Firebase data)
+      const fixedBrands = (raw.brands||DEF.brands).map(rb=>{
+        const defBrand = DEF.brands.find(db=>db.id===rb.id);
+        if(defBrand && defBrand.name!==rb.name) return {...rb, name:defBrand.name};
+        return rb;
+      });
+      // Add any new DEF brands not in Firebase
+      DEF.brands.forEach(db=>{
+        if(!fixedBrands.find(rb=>rb.id===db.id)) fixedBrands.push(db);
+      });
+
       return {...DEF,...raw,
-        brands: raw.brands||DEF.brands,
+        brands: fixedBrands,
         paymentMethods:raw.paymentMethods||DEF.paymentMethods,
         vendors:raw.vendors?.length?raw.vendors:DEF.vendors,
         purchaseItems:raw.purchaseItems||DEF.purchaseItems,
