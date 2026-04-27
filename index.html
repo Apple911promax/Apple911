@@ -620,7 +620,6 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock}) {
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end"}}>
           <div style={{flex:2,minWidth:110}}><Input placeholder="項目名稱" value={custItem.name} onChange={e=>setCustItem(c=>({...c,name:e.target.value}))} style={{marginBottom:0}}/></div>
           <div style={{flex:1,minWidth:70}}><Input placeholder="成本" type="number" value={custItem.cost} onChange={e=>setCustItem(c=>({...c,cost:e.target.value}))} style={{marginBottom:0}}/></div>
-          <div style={{flex:1,minWidth:70}}><Input </div>
           <Btn v="ghost" onClick={addCustom} sm style={{flexShrink:0}}>新增</Btn>
         </div>
       </Card>
