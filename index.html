@@ -13,7 +13,6 @@
   <style>
     *{-webkit-tap-highlight-color:transparent;box-sizing:border-box;}
     body{margin:0;padding:0;background:#050d1a;overscroll-behavior:none;-webkit-overflow-scrolling:touch;}
-    [data-handle]{touch-action:none;}
   </style>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -1047,151 +1046,89 @@ function ReportsPage({orders,purchases,expenses}) {
 
 
 // ─── SORTABLE LIST ────────────────────────────────────────────────────────────
-// 使用 useEffect + 原生 DOM 事件（passive:false），iOS Safari 真正可用
+// 操作方式：點選項目選取（藍色），再點另一個項目交換位置
 function SortableList({ items, onReorder, onDelete, renderLabel }) {
-  const [order, setOrder] = useState(items.map((_,i)=>i));
-  const [ghost, setGhost] = useState(null);   // {idx, y}
-  const containerRef = useState(null);
-  const stateRef = { items, onReorder, onDelete };
+  const [selected, setSelected] = useState(null);
 
-  // Sync order when items change externally
-  useEffect(()=>{ setOrder(items.map((_,i)=>i)); }, [items.length, items.join?.("||")]);
-
-  useEffect(()=>{
-    const el = document.querySelector(`[data-sortid="${containerRef[0]}"]`);
-    if (!el) return;
-
-    let dragIdx = null;
-    let overIdx = null;
-    let startY  = 0;
-
-    function getRowHeight() {
-      const rows = el.querySelectorAll('[data-row]');
-      if (rows.length === 0) return 56;
-      return rows[0].getBoundingClientRect().height + 6; // height + gap
+  function handleTap(idx) {
+    if (selected === null) {
+      // 第一次點：選取
+      setSelected(idx);
+    } else if (selected === idx) {
+      // 點同一個：取消選取
+      setSelected(null);
+    } else {
+      // 點另一個：交換位置
+      const arr = [...items];
+      [arr[selected], arr[idx]] = [arr[idx], arr[selected]];
+      onReorder(arr);
+      setSelected(null);
     }
-
-    function getIdxFromY(clientY) {
-      const rows = el.querySelectorAll('[data-row]');
-      for (let i=0;i<rows.length;i++) {
-        const r = rows[i].getBoundingClientRect();
-        if (clientY >= r.top && clientY <= r.bottom) return i;
-      }
-      // clamp to edges
-      if (rows.length === 0) return null;
-      const first = rows[0].getBoundingClientRect();
-      const last  = rows[rows.length-1].getBoundingClientRect();
-      if (clientY < first.top) return 0;
-      if (clientY > last.bottom) return rows.length-1;
-      return null;
-    }
-
-    function onTouchStart(e) {
-      const handle = e.target.closest('[data-handle]');
-      if (!handle) return;
-      const row = handle.closest('[data-row]');
-      if (!row) return;
-      dragIdx = parseInt(row.getAttribute('data-row'));
-      overIdx = dragIdx;
-      startY  = e.touches[0].clientY;
-      row.style.opacity = '0.4';
-    }
-
-    function onTouchMove(e) {
-      if (dragIdx === null) return;
-      e.preventDefault(); // stops page scroll - only works with passive:false
-      const y = e.touches[0].clientY;
-      const over = getIdxFromY(y);
-      if (over !== null && over !== overIdx) {
-        // Highlight target row
-        el.querySelectorAll('[data-row]').forEach(r=>{
-          r.style.background = '';
-          r.style.border = '';
-        });
-        const targetRow = el.querySelector(`[data-row="${over}"]`);
-        if (targetRow) {
-          targetRow.style.background = 'rgba(0,160,255,0.25)';
-          targetRow.style.border = '1.5px solid #00c2ff';
-        }
-        overIdx = over;
-      }
-    }
-
-    function onTouchEnd(e) {
-      if (dragIdx === null) return;
-      // Reset styles
-      el.querySelectorAll('[data-row]').forEach(r=>{
-        r.style.opacity=''; r.style.background=''; r.style.border='';
-      });
-      if (overIdx !== null && dragIdx !== overIdx) {
-        const cur = stateRef.items;
-        const arr = [...cur];
-        const [moved] = arr.splice(dragIdx,1);
-        arr.splice(overIdx,0,moved);
-        stateRef.onReorder(arr);
-      }
-      dragIdx=null; overIdx=null;
-    }
-
-    el.addEventListener('touchstart', onTouchStart, {passive:true});
-    el.addEventListener('touchmove',  onTouchMove,  {passive:false}); // KEY: passive:false
-    el.addEventListener('touchend',   onTouchEnd,   {passive:true});
-
-    return ()=>{
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove',  onTouchMove);
-      el.removeEventListener('touchend',   onTouchEnd);
-    };
-  }, [items.length]);
-
-  // Use a stable container ID
-  const cid = useState(()=>Math.random().toString(36).slice(2))[0];
+  }
 
   return (
-    <div data-sortid={cid} style={{display:"flex",flexDirection:"column",gap:6}}>
-      {items.map((item,idx)=>(
-        <div
-          key={typeof item==="string"?item:(item.id||idx)}
-          data-row={idx}
-          style={{
-            display:"flex",alignItems:"center",gap:8,
-            background:"rgba(0,40,110,0.35)",borderRadius:10,
-            border:`1px solid ${C.border}`,padding:"11px 10px",
-            transition:"background .15s,border .15s",
-          }}
-        >
-          {/* Drag handle - large touch target */}
-          <div
-            data-handle="1"
-            style={{
-              fontSize:22,color:C.textDim,
-              padding:"4px 8px",flexShrink:0,
-              cursor:"grab",userSelect:"none",
-              WebkitUserSelect:"none",
-              lineHeight:1,
-            }}
-          >⠿</div>
-
-          {/* Label */}
-          <div style={{flex:1,fontSize:14,color:C.text,lineHeight:1.5}}>
-            {renderLabel ? renderLabel(item) : String(item)}
-          </div>
-
-          {/* Delete */}
-          <button
-            onClick={()=>onDelete(item,idx)}
-            style={{
-              width:36,height:36,borderRadius:9,
-              border:`1px solid ${C.red}55`,
-              background:"rgba(255,50,80,0.15)",
-              color:C.red,cursor:"pointer",
-              fontSize:17,fontWeight:700,
-              display:"flex",alignItems:"center",justifyContent:"center",
-              flexShrink:0,
-            }}
-          >✕</button>
+    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+      {selected !== null && (
+        <div style={{
+          background:"rgba(0,120,255,0.15)",border:`1px solid ${C.accent}`,
+          borderRadius:9,padding:"8px 12px",fontSize:12,color:C.accent,
+          textAlign:"center",marginBottom:2,
+        }}>
+          ✅ 已選取「{typeof items[selected]==="string"?items[selected]:(renderLabel?renderLabel(items[selected]):items[selected])}」→ 點另一個項目交換位置
         </div>
-      ))}
+      )}
+      {items.map((item, idx) => {
+        const isSel = selected === idx;
+        const isTarget = selected !== null && selected !== idx;
+        return (
+          <div
+            key={typeof item==="string" ? item : (item.id||idx)}
+            onClick={() => handleTap(idx)}
+            style={{
+              display:"flex", alignItems:"center", gap:8,
+              background: isSel
+                ? "rgba(0,120,255,0.3)"
+                : isTarget
+                  ? "rgba(0,80,180,0.2)"
+                  : "rgba(0,40,110,0.35)",
+              borderRadius:10,
+              border: isSel
+                ? `2px solid ${C.accent}`
+                : isTarget
+                  ? `1.5px dashed ${C.accent}`
+                  : `1px solid ${C.border}`,
+              padding:"12px 12px",
+              cursor:"pointer",
+              transition:"all .15s",
+              userSelect:"none",
+            }}
+          >
+            {/* Icon */}
+            <div style={{fontSize:18,flexShrink:0}}>
+              {isSel ? "✅" : isTarget ? "🔄" : "☰"}
+            </div>
+
+            {/* Label */}
+            <div style={{flex:1,fontSize:14,color:isSel?C.accent:C.text,fontWeight:isSel?700:400}}>
+              {renderLabel ? renderLabel(item) : String(item)}
+            </div>
+
+            {/* Delete */}
+            <button
+              onClick={e=>{e.stopPropagation();setSelected(null);onDelete(item,idx);}}
+              style={{
+                width:36,height:36,borderRadius:9,
+                border:`1px solid ${C.red}55`,
+                background:"rgba(255,50,80,0.15)",
+                color:C.red,cursor:"pointer",
+                fontSize:17,fontWeight:700,
+                display:"flex",alignItems:"center",justifyContent:"center",
+                flexShrink:0,
+              }}
+            >✕</button>
+          </div>
+        );
+      })}
     </div>
   );
 }
