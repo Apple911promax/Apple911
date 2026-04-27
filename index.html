@@ -302,22 +302,39 @@ const ITEM_MAP = {
 // ─── DEFAULT CATALOG ──────────────────────────────────────────────────────────
 const DEF = {
   brands: [
-    { id:"apple", name:"Apple", models:[
-      "iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16",
-      "iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15",
-      "iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14",
-      "iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini",
-      "iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini",
-      "iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11","iPhone SE (3rd)","iPhone SE (2nd)",
-      "iPad Pro 12.9\"","iPad Pro 11\"","iPad Air","iPad mini","iPad (10th)",
+    { id:"apple", name:"Apple", series:[
+      { name:"iPhone 16 系列", models:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },
+      { name:"iPhone 15 系列", models:["iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15"] },
+      { name:"iPhone 14 系列", models:["iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14"] },
+      { name:"iPhone 13 系列", models:["iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini"] },
+      { name:"iPhone 12 系列", models:["iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini"] },
+      { name:"iPhone 11 系列", models:["iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11"] },
+      { name:"iPhone SE 系列", models:["iPhone SE (3rd)","iPhone SE (2nd)"] },
+      { name:"iPad Pro",       models:["iPad Pro 13\"","iPad Pro 11\""] },
+      { name:"iPad Air",       models:["iPad Air (M2)","iPad Air (M1)"] },
+      { name:"iPad mini",      models:["iPad mini (7th)","iPad mini (6th)"] },
+      { name:"iPad",           models:["iPad (10th)","iPad (9th)"] },
+      { name:"MacBook Pro",    models:["MacBook Pro 16\" M4","MacBook Pro 14\" M4","MacBook Pro 16\" M3","MacBook Pro 14\" M3"] },
+      { name:"MacBook Air",    models:["MacBook Air 15\" M3","MacBook Air 13\" M3","MacBook Air M2"] },
     ]},
-    { id:"samsung", name:"三星 Samsung", models:[
-      "Galaxy S24 Ultra","Galaxy S24+","Galaxy S24","Galaxy S23 Ultra","Galaxy S23+","Galaxy S23",
-      "Galaxy Z Fold5","Galaxy Z Flip5","Galaxy A54","Galaxy A34",
+    { id:"samsung", name:"三星 Samsung", series:[
+      { name:"S 系列", models:["Galaxy S25 Ultra","Galaxy S25+","Galaxy S25","Galaxy S24 Ultra","Galaxy S24+","Galaxy S24"] },
+      { name:"Z 摺疊系列", models:["Galaxy Z Fold6","Galaxy Z Fold5","Galaxy Z Flip6","Galaxy Z Flip5"] },
+      { name:"A 系列", models:["Galaxy A55","Galaxy A35","Galaxy A54","Galaxy A34","Galaxy A25"] },
     ]},
-    { id:"oppo",   name:"OPPO",       models:["Find X7 Ultra","Find X6 Pro","Reno 11 Pro","Reno 10 Pro","A98","A78"]},
-    { id:"xiaomi", name:"小米 Xiaomi", models:["14 Ultra","14 Pro","14","13 Ultra","Redmi Note 13 Pro","Redmi 13C"]},
-    { id:"asus",   name:"ASUS",       models:["ROG Phone 8 Pro","ROG Phone 7","Zenfone 10","Zenfone 9"]},
+    { id:"oppo", name:"OPPO", series:[
+      { name:"Find X 系列", models:["Find X8 Ultra","Find X8 Pro","Find X7 Ultra","Find X6 Pro"] },
+      { name:"Reno 系列",   models:["Reno 12 Pro","Reno 11 Pro","Reno 10 Pro"] },
+      { name:"A 系列",      models:["A3 Pro","A98","A78","A58"] },
+    ]},
+    { id:"xiaomi", name:"小米 Xiaomi", series:[
+      { name:"小米 數字系列", models:["15 Ultra","15 Pro","15","14 Ultra","14 Pro","14"] },
+      { name:"Redmi 系列",   models:["Redmi Note 13 Pro+","Redmi Note 13 Pro","Redmi 13C","Redmi 13"] },
+    ]},
+    { id:"asus", name:"ASUS", series:[
+      { name:"ROG Phone", models:["ROG Phone 9 Pro","ROG Phone 8 Pro","ROG Phone 7"] },
+      { name:"Zenfone",   models:["Zenfone 11 Ultra","Zenfone 10","Zenfone 9"] },
+    ]},
   ],
   repairItems: [
     {id:"r1", cat:"螢幕類",      name:"螢幕總成更換",     stockItem:"螢幕",   defaultCost:800,  defaultPrice:1500},
@@ -467,11 +484,13 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock}) {
   const [vendors,setVendors]   = useState(editOrder?.vendors||[]);
   const [items,setItems]       = useState(editOrder?.items||[]);
   const [photos,setPhotos]     = useState(editOrder?.photos||[]);
-  const [custItem,setCustItem] = useState({name:"",cost:"",price:""});
+  const [totalPrice,setTotalPrice] = useState(editOrder?.totalRevenue||"");
+  const [custItem,setCustItem] = useState({name:"",cost:""});
   const [filterCat,setFilterCat]= useState("全部");
 
   const brandObj  = catalog.brands.find(b=>b.id===brand);
-  const modelList = brandObj?brandObj.models:[];
+  const allSeries = brandObj?.series || (brandObj?.models ? [{name:"全部型號", models:brandObj.models}] : []);
+  const modelList = allSeries.flatMap(s=>s.models);
   const payMethods= catalog.paymentMethods||DEF.paymentMethods;
   const vendorList= catalog.vendors||DEF.vendors;
   const visItems  = filterCat==="全部"?catalog.repairItems:catalog.repairItems.filter(i=>i.cat===filterCat);
@@ -484,18 +503,18 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock}) {
   function toggleItem(ri) {
     const ex=items.find(i=>i.id===ri.id);
     if(ex) setItems(items.filter(i=>i.id!==ri.id));
-    else   setItems([...items,{id:ri.id,name:ri.name,cat:ri.cat,stockItem:ri.stockItem||"",cost:ri.defaultCost,price:ri.defaultPrice}]);
+    else   setItems([...items,{id:ri.id,name:ri.name,cat:ri.cat,stockItem:ri.stockItem||"",cost:ri.defaultCost}]);
   }
   function setField(id,f,v){ setItems(items.map(i=>i.id===id?{...i,[f]:v===""?"":Number(v)||0}:i)); }
   function addCustom(){
     if(!custItem.name)return;
-    setItems([...items,{id:"c_"+uid(),name:custItem.name,cat:"自定義",stockItem:"",cost:Number(custItem.cost)||0,price:Number(custItem.price)||0}]);
-    setCustItem({name:"",cost:"",price:""});
+    setItems([...items,{id:"c_"+uid(),name:custItem.name,cat:"自定義",stockItem:"",cost:Number(custItem.cost)||0}]);
+    setCustItem({name:"",cost:""});
   }
 
-  const totalRevenue=items.reduce((a,i)=>a+(Number(i.price)||0),0);
-  const totalCost   =items.reduce((a,i)=>a+(Number(i.cost)||0),0);
-  const profit      =totalRevenue-totalCost;
+  const totalRevenue= Number(totalPrice)||0;
+  const totalCost   = items.reduce((a,i)=>a+(Number(i.cost)||0),0);
+  const profit      = totalRevenue-totalCost;
 
   function handleSave(){
     if(items.length===0){alert("請至少新增一個維修或配件項目");return;}
@@ -512,12 +531,33 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock}) {
           {catalog.brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           <option value="_custom">其他品牌（手動輸入）</option>
         </Sel>
-        {brand && brand!=="other" && modelList.length>0 && (
-          <Sel label="② 型號" value={model} onChange={e=>{setModel(e.target.value);if(e.target.value!=="_custom")setModelFree(e.target.value);}}>
-            <option value="">選擇型號</option>
-            {modelList.map(m=><option key={m} value={m}>{m}</option>)}
-            <option value="_custom">── 找不到？手動輸入 ──</option>
-          </Sel>
+        {brand && brand!=="other" && allSeries.length>0 && (
+          <div style={{marginBottom:10}}>
+            <div style={{color:C.textDim,fontSize:11,fontWeight:600,letterSpacing:.7,textTransform:"uppercase",marginBottom:5}}>② 系列 / 型號</div>
+            {allSeries.map(ser=>(
+              <div key={ser.name} style={{marginBottom:8}}>
+                <div style={{color:C.textMid,fontSize:11,fontWeight:700,marginBottom:4,paddingLeft:4}}>
+                  ▸ {ser.name}
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:5,paddingLeft:8}}>
+                  {ser.models.map(m=>(
+                    <button key={m} onClick={()=>{setModel(m);setModelFree(m);}} style={{
+                      padding:"6px 10px",borderRadius:8,border:"none",cursor:"pointer",
+                      fontSize:12,fontWeight:600,fontFamily:"inherit",
+                      background:model===m?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(0,40,110,0.5)",
+                      color:model===m?"#fff":C.textMid,
+                      transition:"all .15s",
+                      boxShadow:model===m?`0 2px 8px ${C.accent}44`:"none",
+                    }}>{m}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <button onClick={()=>{setModel("_custom");setModelFree("");}} style={{
+              marginTop:4,padding:"6px 12px",borderRadius:8,border:`1px dashed ${C.border}`,
+              background:"transparent",color:C.textDim,fontSize:12,cursor:"pointer",fontFamily:"inherit",
+            }}>✏️ 手動輸入型號</button>
+          </div>
         )}
         {(model==="_custom"||brand==="_custom"||(brand&&modelList.length===0))&&(
           <Input label={brand==="_custom"?"品牌名稱":"手動輸入型號"} value={modelFree} onChange={e=>setModelFree(e.target.value)} placeholder="輸入型號名稱"/>
@@ -580,7 +620,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock}) {
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end"}}>
           <div style={{flex:2,minWidth:110}}><Input placeholder="項目名稱" value={custItem.name} onChange={e=>setCustItem(c=>({...c,name:e.target.value}))} style={{marginBottom:0}}/></div>
           <div style={{flex:1,minWidth:70}}><Input placeholder="成本" type="number" value={custItem.cost} onChange={e=>setCustItem(c=>({...c,cost:e.target.value}))} style={{marginBottom:0}}/></div>
-          <div style={{flex:1,minWidth:70}}><Input placeholder="售價" type="number" value={custItem.price} onChange={e=>setCustItem(c=>({...c,price:e.target.value}))} style={{marginBottom:0}}/></div>
+          <div style={{flex:1,minWidth:70}}><Input </div>
           <Btn v="ghost" onClick={addCustom} sm style={{flexShrink:0}}>新增</Btn>
         </div>
       </Card>
@@ -588,40 +628,58 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock}) {
       {/* 明細 */}
       {items.length>0&&(
         <Card hi>
-          <H>📋 工單明細 — 直接修改成本 / 售價</H>
-          {items.map(item=>{
-            const p=(Number(item.price)||0)-(Number(item.cost)||0);
-            return (
-              <div key={item.id} style={{padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <div><span style={{color:C.text,fontSize:13,fontWeight:700}}>{item.name}</span><span style={{color:C.textDim,fontSize:10,marginLeft:8}}>{item.cat}</span></div>
-                  <button onClick={()=>setItems(items.filter(i=>i.id!==item.id))} style={{background:"rgba(255,50,80,0.15)",border:`1px solid ${C.red}44`,borderRadius:7,color:C.red,fontSize:12,cursor:"pointer",padding:"3px 9px",fontWeight:700,fontFamily:"inherit"}}>✕ 移除</button>
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-                  <div>
-                    <Lbl c="成本 NT$"/>
-                    <input type="number" value={item.cost} onChange={e=>setField(item.id,"cost",e.target.value)}
-                      style={{width:"100%",boxSizing:"border-box",background:"rgba(255,80,40,0.12)",border:"1.5px solid rgba(255,100,50,0.35)",borderRadius:8,color:"#ffaa80",padding:"8px 10px",fontSize:14,fontWeight:700,outline:"none",fontFamily:"inherit",textAlign:"right"}}
-                      onFocus={e=>e.target.style.borderColor="#ff8040"} onBlur={e=>e.target.style.borderColor="rgba(255,100,50,0.35)"}/>
-                  </div>
-                  <div>
-                    <Lbl c="售價 NT$"/>
-                    <input type="number" value={item.price} onChange={e=>setField(item.id,"price",e.target.value)}
-                      style={{width:"100%",boxSizing:"border-box",background:"rgba(0,100,200,0.18)",border:"1.5px solid rgba(0,150,255,0.35)",borderRadius:8,color:C.accent,padding:"8px 10px",fontSize:14,fontWeight:700,outline:"none",fontFamily:"inherit",textAlign:"right"}}
-                      onFocus={e=>e.target.style.borderColor=C.accent} onBlur={e=>e.target.style.borderColor="rgba(0,150,255,0.35)"}/>
-                  </div>
-                  <div>
-                    <Lbl c="單項利潤"/>
-                    <div style={{background:p>=0?"rgba(0,232,160,0.1)":"rgba(255,60,90,0.1)",border:`1.5px solid ${p>=0?C.green+"44":C.red+"44"}`,borderRadius:8,color:p>=0?C.green:C.red,padding:"8px 10px",fontSize:14,fontWeight:800,textAlign:"right"}}>{p>=0?"+":""}{fmt(p)}</div>
-                  </div>
-                </div>
+          <H>📋 工單明細 — 填寫各項零件成本</H>
+          {items.map(item=>(
+            <div key={item.id} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{flex:1}}>
+                <div style={{color:C.text,fontSize:13,fontWeight:700}}>{item.name}</div>
+                <div style={{color:C.textDim,fontSize:10,marginTop:2}}>{item.cat}</div>
               </div>
-            );
-          })}
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>
-            <Stat label="總售價" value={fmt(totalRevenue)} icon="💰"/>
-            <Stat label="總成本" value={fmt(totalCost)} color={C.orange} icon="📦"/>
-            <Stat label="利潤" value={(profit>=0?"+":"")+fmt(profit)} color={profit>=0?C.green:C.red} icon="📈"/>
+              <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                <div>
+                  <Lbl c="成本"/>
+                  <input type="number" value={item.cost} onChange={e=>setField(item.id,"cost",e.target.value)}
+                    style={{width:90,boxSizing:"border-box",background:"rgba(255,80,40,0.12)",border:"1.5px solid rgba(255,100,50,0.35)",borderRadius:8,color:"#ffaa80",padding:"8px 8px",fontSize:14,fontWeight:700,outline:"none",fontFamily:"inherit",textAlign:"right"}}
+                    onFocus={e=>e.target.style.borderColor="#ff8040"} onBlur={e=>e.target.style.borderColor="rgba(255,100,50,0.35)"}/>
+                </div>
+                <button onClick={()=>setItems(items.filter(i=>i.id!==item.id))}
+                  style={{background:"rgba(255,50,80,0.15)",border:`1px solid ${C.red}44`,borderRadius:7,color:C.red,fontSize:12,cursor:"pointer",padding:"4px 8px",fontWeight:700,fontFamily:"inherit",whiteSpace:"nowrap",marginTop:16}}>✕</button>
+              </div>
+            </div>
+          ))}
+
+          {/* 總零件成本小計 */}
+          <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:`1px solid ${C.border}`,marginTop:4}}>
+            <span style={{color:C.textDim,fontSize:12}}>零件成本小計</span>
+            <span style={{color:C.orange,fontWeight:700}}>{fmt(totalCost)}</span>
+          </div>
+
+          {/* 總售價輸入 */}
+          <div style={{marginTop:12,padding:"14px",background:"rgba(0,60,160,0.2)",borderRadius:12,border:`1.5px solid ${C.borderHi}`}}>
+            <Lbl c="💰 本次收費總金額 NT$"/>
+            <input
+              type="number"
+              value={totalPrice}
+              onChange={e=>setTotalPrice(e.target.value)}
+              placeholder="輸入向客人收取的總金額"
+              style={{
+                width:"100%",boxSizing:"border-box",
+                background:"rgba(0,80,200,0.2)",
+                border:"2px solid rgba(0,180,255,0.4)",
+                borderRadius:10,color:C.accent,
+                padding:"12px 14px",fontSize:20,fontWeight:800,
+                outline:"none",fontFamily:"inherit",textAlign:"right",
+              }}
+              onFocus={e=>e.target.style.borderColor=C.accent}
+              onBlur={e=>e.target.style.borderColor="rgba(0,180,255,0.4)"}
+            />
+          </div>
+
+          {/* 損益 */}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
+            <Stat label="收費總額" value={fmt(totalRevenue)} icon="💰"/>
+            <Stat label="零件成本" value={fmt(totalCost)} color={C.orange} icon="📦"/>
+            <Stat label="利潤" value={totalRevenue>0?(profit>=0?"+":"")+fmt(profit):"—"} color={totalRevenue>0?(profit>=0?C.green:C.red):C.textDim} icon="📈"/>
           </div>
         </Card>
       )}
@@ -1220,27 +1278,75 @@ function AdminPage({catalog,setCatalog}) {
           )}
         />
 
-        {/* 各品牌型號管理 */}
-        <div style={{marginTop:16,color:C.accent,fontWeight:700,fontSize:13,marginBottom:8}}>型號管理</div>
-        {catalog.brands.map(b=>(<Card key={b.id}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}>
-            <span style={{color:C.text,fontWeight:700,fontSize:14}}>{b.name}</span>
-          </div>
-          <div style={{color:C.textDim,fontSize:10,marginBottom:8}}>點型號選取，再點藍線插入排序　✕ 刪除</div>
-          <SortableList
-            items={b.models}
-            onReorder={newModels=>sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:newModels}:x)})}
-            onDelete={mo=>sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:x.models.filter(m=>m!==mo)}:x)})}
-          />
-          {sb===b.id
-            ?(<div style={{display:"flex",gap:8,marginTop:8}}>
-                <Input value={nm} onChange={e=>setNm(e.target.value)} placeholder="型號名稱" style={{marginBottom:0}}/>
-                <Btn sm onClick={()=>{if(!nm)return;sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,models:[...x.models,nm]}:x)});setNm("");}}>新增</Btn>
-                <Btn v="ghost" sm onClick={()=>setSb("")}>取消</Btn>
-              </div>)
-            :<Btn v="ghost" sm onClick={()=>setSb(b.id)} style={{marginTop:8}}>＋ 新增型號</Btn>
-          }
-        </Card>))}
+        {/* 各品牌系列/型號管理 */}
+        <div style={{marginTop:16,color:C.accent,fontWeight:700,fontSize:13,marginBottom:8}}>系列 / 型號管理</div>
+        {catalog.brands.map(b=>{
+          const bSeries = b.series || (b.models?[{name:"全部型號",models:b.models}]:[]);
+          return (
+          <Card key={b.id}>
+            <div style={{color:C.text,fontWeight:700,fontSize:14,marginBottom:10}}>{b.name}</div>
+
+            {/* 新增系列 */}
+            {sb===b.id && sb.startsWith?.("ser_") ? null :
+              <div style={{display:"flex",gap:6,marginBottom:10}}>
+                <Input value={sb===`ns_${b.id}`?nm:""} onChange={e=>setNm(e.target.value)}
+                  placeholder="新增系列（如：iPhone 17 系列）" style={{marginBottom:0}}
+                  onFocus={()=>setSb(`ns_${b.id}`)}/>
+                <Btn sm onClick={()=>{
+                  if(!nm)return;
+                  const newSer={name:nm,models:[]};
+                  sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:[...(x.series||[]),newSer]}:x)});
+                  setNm(""); setSb("");
+                }}>新增系列</Btn>
+              </div>
+            }
+
+            {/* 系列列表 */}
+            {bSeries.map((ser,serIdx)=>(
+              <div key={ser.name} style={{marginBottom:12,background:"rgba(0,20,60,0.3)",borderRadius:10,padding:"10px 12px",border:`1px solid ${C.border}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <span style={{color:C.accent,fontWeight:700,fontSize:13}}>▸ {ser.name}</span>
+                  <button onClick={()=>{
+                    if(!confirm(`刪除「${ser.name}」系列？`))return;
+                    const newSeries=bSeries.filter((_,i)=>i!==serIdx);
+                    sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
+                  }} style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:12}}>✕ 刪除系列</button>
+                </div>
+
+                {/* 型號排序列表 */}
+                <SortableList
+                  items={ser.models}
+                  onReorder={newModels=>{
+                    const newSeries=[...bSeries];
+                    newSeries[serIdx]={...ser,models:newModels};
+                    sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
+                  }}
+                  onDelete={(mo)=>{
+                    const newSeries=[...bSeries];
+                    newSeries[serIdx]={...ser,models:ser.models.filter(m=>m!==mo)};
+                    sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
+                  }}
+                />
+
+                {/* 新增型號到此系列 */}
+                {sb===`${b.id}_${serIdx}`
+                  ?(<div style={{display:"flex",gap:6,marginTop:6}}>
+                      <Input value={nm} onChange={e=>setNm(e.target.value)} placeholder="型號名稱" style={{marginBottom:0}}/>
+                      <Btn sm onClick={()=>{
+                        if(!nm)return;
+                        const newSeries=[...bSeries];
+                        newSeries[serIdx]={...ser,models:[...ser.models,nm]};
+                        sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
+                        setNm(""); setSb("");
+                      }}>新增</Btn>
+                      <Btn v="ghost" sm onClick={()=>setSb("")}>取消</Btn>
+                    </div>)
+                  :<Btn v="ghost" sm onClick={()=>setSb(`${b.id}_${serIdx}`)} style={{marginTop:6}}>＋ 新增型號</Btn>
+                }
+              </div>
+            ))}
+          </Card>
+        );})}
       </div>)}
 
       {tab==="items"&&(<div>
