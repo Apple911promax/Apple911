@@ -491,7 +491,7 @@ const Tag = ({children,color}) => <span style={{background:`${color||C.accent}22
 // ─── STOCK CALCULATOR ─────────────────────────────────────────────────────────
 function useStock(purchases, orders, catalog) {
   return useMemo(() => {
-    const cats = catalog.purchaseCategories || DEF.purchaseCategories;
+    const cats = Array.isArray(catalog.purchaseCategories) ? catalog.purchaseCategories : DEF.purchaseCategories;
     const result = {}; // key = "cat__brand__model"
 
     cats.forEach(({cat, brands=[]}) => {
@@ -1075,7 +1075,7 @@ function InventoryPage({stock,catalog,setCatalog}) {
   const [newCatName,setNewCatName] = useState("");
   const [expandState,setExpandState] = useState({}); // track brand/series expand
 
-  const cats = catalog.purchaseCategories || DEF.purchaseCategories;
+  const cats = Array.isArray(catalog.purchaseCategories) ? catalog.purchaseCategories : DEF.purchaseCategories;
   function sc(next){ setCatalog(next); save(SK.catalog,next); }
   function updateCats(nc){ sc({...catalog,purchaseCategories:nc}); }
 
@@ -1190,39 +1190,52 @@ function InventoryPage({stock,catalog,setCatalog}) {
                           {/* 管理：新增系列 */}
                           {managing&&<InvAddRow placeholder="新增系列（如：iPhone 16 系列）" onAdd={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...brandObj,series:[...(brandObj.series||[]),{name:v,models:[]}]};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>}
 
-                          {/* 系列列表 */}
-                          {(brandObj.series||[]).map((serObj,si2)=>{
+                          {/* 系列列表 — 管理模式用 SortableList 排序 */}
+                          {managing ? (
+                            <SortableList
+                              items={brandObj.series||[]}
+                              onReorder={arr=>{const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...brandObj,series:arr};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                              onDelete={(ser)=>{if(!confirm(`刪除系列「${ser.name}」？`))return;const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=(brandObj.series||[]).filter(s=>s.name!==ser.name);nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                              onEdit={(ser,si2,newName)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];const idx=ns.findIndex(s=>s.name===ser.name);if(idx>=0){ns[idx]={...ns[idx],name:newName};}nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                              renderLabel={(serObj,si2)=>{
+                                const idx=(brandObj.series||[]).findIndex(s=>s.name===serObj.name);
+                                const sKey=bKey+"_"+idx;
+                                const sCollapsed=!!invCollapsed[sKey];
+                                return(
+                                  <div style={{width:"100%"}} onClick={e=>e.stopPropagation()}>
+                                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:sCollapsed?0:6}}>
+                                      <EditableText value={serObj.name} onSave={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[idx]={...serObj,name:v};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>
+                                      <span style={{color:C.textDim,fontSize:11,flexShrink:0}}>{serObj.models.length} 型號</span>
+                                      <span onClick={()=>toggle(sKey)} style={{color:C.textMid,fontSize:14,transform:sCollapsed?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 4px",flexShrink:0}}>⌃</span>
+                                    </div>
+                                    {!sCollapsed&&(
+                                      <div>
+                                        <InvAddRow placeholder="新增型號" onAdd={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[idx]={...serObj,models:[...serObj.models,v]};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>
+                                        <SortableList
+                                          items={serObj.models}
+                                          onReorder={arr=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[idx]={...serObj,models:arr};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                          onDelete={(_,mi)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[idx]={...serObj,models:serObj.models.filter((_,i)=>i!==mi)};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                          onEdit={(_,mi,v)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];const nm=[...serObj.models];nm[mi]=v;ns[idx]={...serObj,models:nm};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }}
+                            />
+                          ) : (
+                            /* 一般模式：顯示庫存數量 */
+                            (brandObj.series||[]).map((serObj,si2)=>{
                             const sKey=bKey+"_"+si2;
                             const sCollapsed=!!invCollapsed[sKey];
                             return(
                               <div key={si2} style={{marginBottom:6,background:"rgba(0,20,60,0.3)",borderRadius:9,overflow:"hidden"}}>
-                                {/* 系列標題 */}
                                 <div style={{display:"flex",alignItems:"center",padding:"8px 12px",background:"rgba(0,30,80,0.35)",gap:8}}>
-                                  <div style={{flex:1}} onClick={e=>e.stopPropagation()}>
-                                    {managing
-                                      ? <EditableText value={serObj.name} onSave={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[si2]={...serObj,name:v};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>
-                                      : <span style={{color:C.textMid,fontSize:12}}>▸ {serObj.name}</span>
-                                    }
-                                  </div>
+                                  <span style={{color:C.textMid,fontSize:12,flex:1}}>▸ {serObj.name}</span>
                                   <span style={{color:C.textDim,fontSize:11}}>{serObj.models.length} 型號</span>
-                                  {managing&&<button onClick={()=>{if(!confirm(`刪除系列「${serObj.name}」？`))return;const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=(brandObj.series||[]).filter((_,i)=>i!==si2);nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}} style={{background:"rgba(255,50,80,0.15)",border:`1px solid ${C.red}55`,borderRadius:7,color:C.red,cursor:"pointer",fontSize:11,fontWeight:700,padding:"2px 7px",fontFamily:"inherit"}}>刪</button>}
                                   <span onClick={()=>toggle(sKey)} style={{color:C.textMid,fontSize:14,transform:sCollapsed?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 4px"}}>⌃</span>
                                 </div>
-
                                 {!sCollapsed&&(
-                                  <div style={{padding:"8px 10px"}}>
-                                    {/* 管理：新增型號 */}
-                                    {managing&&<InvAddRow placeholder="新增型號" onAdd={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[si2]={...serObj,models:[...serObj.models,v]};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>}
-
-                                    {/* 型號列表 */}
-                                    {managing
-                                      ? <SortableList
-                                          items={serObj.models}
-                                          onReorder={arr=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[si2]={...serObj,models:arr};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
-                                          onDelete={(_,mi)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[si2]={...serObj,models:serObj.models.filter((_,i)=>i!==mi)};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
-                                          onEdit={(_,mi,v)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];const nm=[...serObj.models];nm[mi]=v;ns[si2]={...serObj,models:nm};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
-                                        />
-                                      : <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:3,marginTop:4}}>
                                           <div style={{color:C.textDim,fontSize:10,fontWeight:700,padding:"3px 6px"}}>型號</div>
                                           <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>進貨</div>
                                           <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>已用</div>
@@ -1245,12 +1258,11 @@ function InventoryPage({stock,catalog,setCatalog}) {
                                             );
                                           })}
                                         </div>
-                                    }
-                                  </div>
                                 )}
                               </div>
                             );
-                          })}
+                          })
+                          )}
                         </div>
                       )}
                     </div>
@@ -2061,9 +2073,19 @@ function App() {
 
       // 強制更新 purchaseCategories：
       // 如果 Firebase 的資料是舊格式（有 variants 沒有 brands），用 DEF 的四層結構取代
-      const rawCats = raw.purchaseCategories || [];
-      const isOldFormat = rawCats.length > 0 && rawCats[0].variants !== undefined && !rawCats[0].brands;
-      const fixedCats = isOldFormat ? DEF.purchaseCategories : (rawCats.length > 0 ? rawCats : DEF.purchaseCategories);
+      // 如果是新格式（有 brands 或空陣列），保留用戶的資料不要覆蓋
+      const rawCats = raw.purchaseCategories;
+      let fixedCats;
+      if (rawCats === undefined || rawCats === null) {
+        // 完全沒有資料，用 DEF
+        fixedCats = DEF.purchaseCategories;
+      } else if (Array.isArray(rawCats) && rawCats.length > 0 && rawCats[0].variants !== undefined && !rawCats[0].brands) {
+        // 舊格式（flat variants），強制換成新格式
+        fixedCats = DEF.purchaseCategories;
+      } else {
+        // 新格式或空陣列 → 完全保留用戶資料，不補 DEF
+        fixedCats = rawCats;
+      }
 
       return {...DEF,...raw,
         brands: fixedBrands,
