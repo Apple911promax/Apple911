@@ -565,28 +565,39 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
 
   function togglePay(p)    { setPayments(ps=>ps.includes(p)?ps.filter(x=>x!==p):[...ps,p]); }
   function toggleVendor(v) { setVendors(vs=>vs.includes(v)?vs.filter(x=>x!==v):[...vs,v]); }
-  // 查最新進貨單價：用維修項目名稱 或 stockItem 去比對進貨記錄
+  // 查最新進貨單價：優先符合已選廠商，再用項目名稱/品項比對
   function getLatestCost(stockItem, itemName) {
     if(!purchases?.length) return null;
     const cur = modelName;
 
-    // 先用維修項目名稱完全比對進貨品項名稱（最精確）
-    const byName = purchases
-      .filter(p => p.itemCat===itemName || p.itemName===itemName || p.vendorName?.includes(itemName) || (p.itemCat&&itemName&&p.itemCat.includes(itemName)))
-      .sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+    // 所有可能符合的進貨記錄（用名稱或stockItem比對）
+    const pool = purchases.filter(p => {
+      const nameMatch = p.itemCat===itemName || p.itemName===itemName ||
+        (p.itemCat&&itemName&&p.itemCat.includes(itemName));
+      const catMatch = stockItem && (p.itemCat===stockItem || p.itemName===stockItem);
+      return (nameMatch || catMatch) && p.amount && p.qty;
+    }).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
 
-    // 再用 stockItem 大類比對
-    const byCat = purchases
-      .filter(p => stockItem && (p.itemCat===stockItem || p.itemName===stockItem))
-      .sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-
-    // 優先用名稱比對，找型號符合的，再找最新的
-    const pool = byName.length ? byName : byCat;
     if(!pool.length) return null;
 
+    // 優先找：廠商符合 + 型號符合
+    if(vendors?.length) {
+      const vendorExact = pool.find(p=>
+        vendors.some(v=>p.vendorName?.includes(v)||v?.includes(p.vendorName||"")) &&
+        p.itemVariant===cur
+      );
+      if(vendorExact) return Math.round(Number(vendorExact.amount)/(Number(vendorExact.qty)||1));
+
+      // 廠商符合（不限型號）
+      const vendorAny = pool.find(p=>
+        vendors.some(v=>p.vendorName?.includes(v)||v?.includes(p.vendorName||""))
+      );
+      if(vendorAny) return Math.round(Number(vendorAny.amount)/(Number(vendorAny.qty)||1));
+    }
+
+    // 找型號符合的最新記錄
     const exact = pool.find(p=>p.itemVariant===cur);
     const p = exact || pool[0];
-    if(!p?.amount || !p?.qty) return null;
     return Math.round(Number(p.amount)/(Number(p.qty)||1));
   }
 
