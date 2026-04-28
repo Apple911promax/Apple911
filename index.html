@@ -1003,9 +1003,37 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
                 </Sel>
               )}
 
-              {/* 手動輸入型號（不選品牌時） */}
+              {/* 手動輸入型號（不選品牌時）- 附自動建議 */}
               {!form._brandId&&(
-                <Input label="手動輸入型號" placeholder="如：iPhone 15 Pro、通用" value={form.itemVariant} onChange={e=>setForm(f=>({...f,itemVariant:e.target.value}))}/>
+                <div style={{marginBottom:10,position:"relative"}}>
+                  <div style={{color:C.textDim,fontSize:11,fontWeight:600,letterSpacing:.7,textTransform:"uppercase",marginBottom:5}}>手動輸入型號</div>
+                  <input
+                    value={form.itemVariant}
+                    onChange={e=>setForm(f=>({...f,itemVariant:e.target.value}))}
+                    placeholder="輸入型號（自動提示）"
+                    style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit"}}
+                    onFocus={e=>e.target.style.borderColor=C.accent}
+                    onBlur={e=>e.target.style.borderColor=C.border}
+                  />
+                  {form.itemVariant.length>=1&&(()=>{
+                    const allModels=(catalog.brands||[]).flatMap(b=>(b.series||[]).flatMap(s=>s.models));
+                    const sugg=allModels.filter(m=>m.toLowerCase().includes(form.itemVariant.toLowerCase())&&m!==form.itemVariant).slice(0,6);
+                    if(!sugg.length) return null;
+                    return(
+                      <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:999,background:"rgba(5,15,50,0.98)",border:`1.5px solid ${C.accent}`,borderRadius:10,overflow:"hidden",boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}>
+                        {sugg.map(s=>(
+                          <div key={s} onTouchEnd={e=>{e.preventDefault();setForm(f=>({...f,itemVariant:s}));}} onClick={()=>setForm(f=>({...f,itemVariant:s}))}
+                            style={{padding:"11px 14px",fontSize:13,color:C.text,cursor:"pointer",borderBottom:`1px solid rgba(0,100,200,0.15)`}}>
+                            {s.split(new RegExp(`(${form.itemVariant})`,"gi")).map((p,i)=>
+                              p.toLowerCase()===form.itemVariant.toLowerCase()
+                                ?<span key={i} style={{color:C.accent,fontWeight:700}}>{p}</span>:p
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
               )}
             </div>
           );
@@ -1379,39 +1407,43 @@ function SortableList({ items, onReorder, onDelete, renderLabel, onEdit }) {
         return (
           <div key={typeof item==="string"?item:(item.id||idx)}>
             {/* 項目本體 */}
-            <div
-              onClick={()=>{
-                if (selected !== null && selected !== idx) return; // 等插入
-                setSelected(isSel ? null : idx);
-              }}
-              style={{
-                display:"flex",alignItems:"center",gap:8,
-                background: isSel ? "rgba(0,120,255,0.28)" : "rgba(0,40,110,0.35)",
-                borderRadius:10,
-                border: isSel ? `2px solid ${C.accent}` : `1px solid ${C.border}`,
-                padding:"12px 12px",cursor:"pointer",
-                transition:"all .15s",userSelect:"none",
-                marginBottom: selected !== null && selected !== idx ? 0 : 6,
-              }}
-            >
-              <div style={{fontSize:16,flexShrink:0,color:isSel?C.accent:C.textDim}}>
-                {isSel ? "✅" : "☰"}
-              </div>
+            <div style={{
+              display:"flex",alignItems:"center",gap:8,
+              background: isSel ? "rgba(0,120,255,0.28)" : "rgba(0,40,110,0.35)",
+              borderRadius:10,
+              border: isSel ? `2px solid ${C.accent}` : `1px solid ${C.border}`,
+              padding:"10px 10px",
+              transition:"all .15s",
+              marginBottom: selected !== null && selected !== idx ? 0 : 6,
+            }}>
+              {/* 排序圖示 — 點這裡才觸發選取 */}
+              <div
+                onClick={()=>{
+                  if (selected !== null && selected !== idx) return;
+                  setSelected(isSel ? null : idx);
+                }}
+                style={{fontSize:18,flexShrink:0,color:isSel?C.accent:C.textDim,
+                  cursor:"pointer",padding:"2px 6px",userSelect:"none"}}
+              >{isSel ? "✅" : "☰"}</div>
+
+              {/* Label / EditableText — 點這裡不觸發排序 */}
               <div style={{flex:1,minWidth:0}} onClick={e=>e.stopPropagation()}>
-                {renderLabel ? renderLabel(item) : (
+                {renderLabel ? renderLabel(item, idx) : (
                   onEdit
                     ? <EditableText value={String(item)} onSave={v=>onEdit(item,idx,v)}/>
                     : <span style={{color:isSel?C.accent:C.text,fontSize:13,fontWeight:isSel?700:400}}>{String(item)}</span>
                 )}
               </div>
+
+              {/* 刪除 */}
               <button
                 onClick={e=>{e.stopPropagation();setSelected(null);onDelete(item,idx);}}
                 style={{
-                  width:36,height:36,borderRadius:9,
+                  width:34,height:34,borderRadius:9,flexShrink:0,
                   border:`1px solid ${C.red}55`,
                   background:"rgba(255,50,80,0.15)",
-                  color:C.red,cursor:"pointer",fontSize:17,fontWeight:700,
-                  display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+                  color:C.red,cursor:"pointer",fontSize:16,fontWeight:700,
+                  display:"flex",alignItems:"center",justifyContent:"center",
                 }}
               >✕</button>
             </div>
@@ -1530,7 +1562,7 @@ function AdminPage({catalog,setCatalog,isBoss}) {
 
         {/* 品牌排序說明 */}
         <div style={{color:C.textDim,fontSize:11,marginBottom:10,padding:"8px 12px",background:"rgba(0,40,100,0.2)",borderRadius:8}}>
-          💡 點品牌名稱選取（藍色），再點藍線插入到該位置排序
+          💡 點品牌名稱選取（藍色），再點藍線插入排序　✏️ 編輯名稱　✕ 刪除
         </div>
 
         {/* 品牌排序區 */}
@@ -1538,10 +1570,21 @@ function AdminPage({catalog,setCatalog,isBoss}) {
           items={catalog.brands}
           onReorder={arr=>sc({...catalog,brands:arr})}
           onDelete={b=>{if(!confirm("刪除品牌？"))return;sc({...catalog,brands:catalog.brands.filter(x=>x.id!==b.id)});}}
-          renderLabel={b=>(
-            <div style={{width:"100%"}}>
-              <div style={{fontWeight:700,fontSize:14,color:C.text,marginBottom:4}}>{b.name}</div>
-              <div style={{color:C.textDim,fontSize:11}}>{(b.series||[]).length} 個系列</div>
+          onEdit={(b,i,newName)=>{
+            const arr=[...catalog.brands];
+            arr[i]={...arr[i],name:newName};
+            sc({...catalog,brands:arr});
+          }}
+          renderLabel={(b,i)=>(
+            <div style={{width:"100%",display:"flex",alignItems:"center",gap:8}} onClick={e=>e.stopPropagation()}>
+              <div style={{flex:1}}>
+                <EditableText value={b.name} onSave={newName=>{
+                  const arr=[...catalog.brands];
+                  arr[i]={...arr[i],name:newName};
+                  sc({...catalog,brands:arr});
+                }}/>
+              </div>
+              <div style={{color:C.textDim,fontSize:11,flexShrink:0}}>{(b.series||[]).length} 個系列</div>
             </div>
           )}
         />
@@ -1608,23 +1651,21 @@ function AdminPage({catalog,setCatalog,isBoss}) {
                 const collapsed = !!newSeriesName[colKey]; // reuse newSeriesName as general state map
                 return (
                   <div style={{width:"100%"}}>
-                    {/* 系列標題 + 展開/收合 */}
-                    <div
-                      onClick={()=>setNewSeriesName(prev=>({...prev,[colKey]:!prev[colKey]}))}
-                      style={{display:"flex",justifyContent:"space-between",alignItems:"center",
-                        marginBottom:collapsed?0:10,cursor:"pointer",userSelect:"none"}}
-                    >
-                      <span style={{color:C.accent,fontWeight:700,fontSize:13}}>
-                        ▸ {ser.name}
-                        <span style={{color:C.textDim,fontSize:11,marginLeft:6,fontWeight:400}}>
-                          {ser.models.length} 個型號
-                        </span>
-                      </span>
-                      <span style={{
-                        color:C.accent,fontSize:18,
-                        transform:collapsed?"rotate(0deg)":"rotate(180deg)",
-                        transition:"transform .2s",display:"inline-block",
-                      }}>⌃</span>
+                    {/* 系列標題 + 展開/收合 + 編輯 */}
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:collapsed?0:10}}>
+                      <div style={{flex:1,display:"flex",alignItems:"center",gap:6}} onClick={e=>e.stopPropagation()}>
+                        <span style={{color:C.accent,fontSize:13}}>▸</span>
+                        <EditableText value={ser.name} onSave={newName=>{
+                          const newSeries=[...bSeries];
+                          newSeries[idx]={...ser,name:newName};
+                          sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
+                        }}/>
+                        <span style={{color:C.textDim,fontSize:11,flexShrink:0}}>{ser.models.length} 個</span>
+                      </div>
+                      <span
+                        onClick={()=>setNewSeriesName(prev=>({...prev,[colKey]:!prev[colKey]}))}
+                        style={{color:C.accent,fontSize:18,transform:collapsed?"rotate(0deg)":"rotate(180deg)",transition:"transform .2s",display:"inline-block",cursor:"pointer",padding:"0 4px"}}
+                      >⌃</span>
                     </div>
 
                     {/* 收合時不顯示內容 */}
