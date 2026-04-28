@@ -1138,8 +1138,89 @@ function InventoryPage({stock,catalog,setCatalog}) {
         </Card>
       )}
 
-      {/* 品項列表 */}
-      {filtered.map((catObj,ci)=>{
+      {/* 品項列表 — 管理模式可排序 */}
+      {managing ? (
+        <SortableList
+          items={cats}
+          onReorder={arr=>updateCats(arr)}
+          onDelete={(cat)=>{if(!confirm(`刪除「${cat.cat}」整個品項？`))return;updateCats(cats.filter(c=>c.cat!==cat.cat));}}
+          onEdit={(cat,ci,v)=>{const nc=[...cats];nc[ci]={...cat,cat:v};updateCats(nc);}}
+          renderLabel={(catObj)=>{
+            const realCi=cats.findIndex(c=>c.cat===catObj.cat);
+            const colKey="inv_"+catObj.cat;
+            const collapsed=!!invCollapsed[colKey];
+            const totalStock=(catObj.brands||[]).flatMap(b=>(b.series||[]).flatMap(s=>s.models.map(m=>stock[catObj.cat+"__"+b.brand+"__"+m]?.stock||0))).reduce((a,v)=>a+v,0);
+            return(
+              <div style={{width:"100%"}} onClick={e=>e.stopPropagation()}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:collapsed?0:8}}>
+                  <EditableText value={catObj.cat} onSave={v=>{const nc=[...cats];nc[realCi]={...catObj,cat:v};updateCats(nc);}}/>
+                  <span style={{color:C.textDim,fontSize:11,flexShrink:0}}>{totalStock} 件</span>
+                  <button onClick={()=>{if(!confirm(`刪除「${catObj.cat}」？`))return;updateCats(cats.filter(c=>c.cat!==catObj.cat));}} style={{background:"rgba(255,50,80,0.15)",border:`1px solid ${C.red}55`,borderRadius:7,color:C.red,cursor:"pointer",fontSize:11,fontWeight:700,padding:"2px 7px",fontFamily:"inherit",flexShrink:0}}>刪</button>
+                  <span onClick={()=>toggle(colKey)} style={{color:C.accent,fontSize:16,transform:collapsed?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 4px",flexShrink:0}}>⌃</span>
+                </div>
+                {!collapsed&&(
+                  <div style={{paddingTop:8}}>
+                    <InvAddRow placeholder="新增品牌（如：iPhone、iPad）" onAdd={v=>{const nc=[...cats];nc[realCi]={...catObj,brands:[...(catObj.brands||[]),{brand:v,series:[]}]};updateCats(nc);}}/>
+                    <SortableList
+                      items={catObj.brands||[]}
+                      onReorder={arr=>{const nc=[...cats];nc[realCi]={...catObj,brands:arr};updateCats(nc);}}
+                      onDelete={(b)=>{if(!confirm(`刪除品牌「${b.brand}」？`))return;const nc=[...cats];nc[realCi]={...catObj,brands:(catObj.brands||[]).filter(x=>x.brand!==b.brand)};updateCats(nc);}}
+                      onEdit={(b,bi,v)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...b,brand:v};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                      renderLabel={(brandObj,bi)=>{
+                        const bKey2=colKey+"_b_"+bi;
+                        const bCol2=!!invCollapsed[bKey2];
+                        return(
+                          <div style={{width:"100%"}} onClick={e=>e.stopPropagation()}>
+                            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:bCol2?0:6}}>
+                              <EditableText value={brandObj.brand} onSave={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...brandObj,brand:v};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>
+                              <span onClick={()=>toggle(bKey2)} style={{color:C.accent,fontSize:14,transform:bCol2?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 4px",flexShrink:0}}>⌃</span>
+                            </div>
+                            {!bCol2&&(
+                              <div style={{paddingLeft:8}}>
+                                <InvAddRow placeholder="新增系列" onAdd={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...brandObj,series:[...(brandObj.series||[]),{name:v,models:[]}]};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>
+                                <SortableList
+                                  items={brandObj.series||[]}
+                                  onReorder={arr=>{const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...brandObj,series:arr};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                  onDelete={(ser)=>{if(!confirm(`刪除系列「${ser.name}」？`))return;const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...brandObj,series:(brandObj.series||[]).filter(s=>s.name!==ser.name)};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                  onEdit={(ser,si,v)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[si]={...ser,name:v};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                  renderLabel={(serObj,si)=>{
+                                    const sKey2=bKey2+"_s_"+si;
+                                    const sCol2=!!invCollapsed[sKey2];
+                                    return(
+                                      <div style={{width:"100%"}} onClick={e=>e.stopPropagation()}>
+                                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:sCol2?0:6}}>
+                                          <EditableText value={serObj.name} onSave={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[si]={...serObj,name:v};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>
+                                          <span style={{color:C.textDim,fontSize:11,flexShrink:0}}>{serObj.models.length} 型號</span>
+                                          <span onClick={()=>toggle(sKey2)} style={{color:C.textMid,fontSize:13,transform:sCol2?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 4px",flexShrink:0}}>⌃</span>
+                                        </div>
+                                        {!sCol2&&(
+                                          <div style={{paddingLeft:8}}>
+                                            <InvAddRow placeholder="新增型號" onAdd={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[si]={...serObj,models:[...serObj.models,v]};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>
+                                            <SortableList
+                                              items={serObj.models}
+                                              onReorder={arr=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[si]={...serObj,models:arr};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                              onDelete={(_,mi)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[si]={...serObj,models:serObj.models.filter((_,i)=>i!==mi)};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                              onEdit={(_,mi,v)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];const nm=[...serObj.models];nm[mi]=v;ns[si]={...serObj,models:nm};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                            />
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          }}
+        />
+      ) : filtered.map((catObj,ci)=>{
         const realCi = cats.indexOf(catObj);
         const colKey = "inv_"+catObj.cat;
         const collapsed = !!invCollapsed[colKey];
@@ -1167,28 +1248,117 @@ function InventoryPage({stock,catalog,setCatalog}) {
                 {/* 管理：新增品牌 */}
                 {managing&&<InvAddRow placeholder="新增品牌（如：iPhone、iPad）" onAdd={v=>{const nc=[...cats];nc[realCi]={...catObj,brands:[...(catObj.brands||[]),{brand:v,series:[]}]};updateCats(nc);}}/>}
 
-                {/* 品牌列表 */}
-                {(catObj.brands||[]).map((brandObj,bi)=>{
+                {/* 品牌列表 — 管理模式可排序 */}
+                {managing ? (
+                  <SortableList
+                    items={catObj.brands||[]}
+                    onReorder={arr=>{const nc=[...cats];nc[realCi]={...catObj,brands:arr};updateCats(nc);}}
+                    onDelete={(b)=>{if(!confirm(`刪除品牌「${b.brand}」？`))return;const nc=[...cats];nc[realCi]={...catObj,brands:(catObj.brands||[]).filter(x=>x.brand!==b.brand)};updateCats(nc);}}
+                    onEdit={(b,bi,v)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...b,brand:v};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                    renderLabel={(brandObj,bi)=>{
+                      const bKey=colKey+"_"+brandObj.brand;
+                      const bCollapsed=!!invCollapsed[bKey];
+                      return(
+                        <div style={{width:"100%"}} onClick={e=>e.stopPropagation()}>
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:bCollapsed?0:6}}>
+                            <EditableText value={brandObj.brand} onSave={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...brandObj,brand:v};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>
+                            <span onClick={()=>toggle(bKey)} style={{color:C.accent,fontSize:14,transform:bCollapsed?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 4px",flexShrink:0}}>⌃</span>
+                          </div>
+                          {!bCollapsed&&(
+                            <div style={{paddingLeft:8}}>
+                              <InvAddRow placeholder="新增系列（如：iPhone 16 系列）" onAdd={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...brandObj,series:[...(brandObj.series||[]),{name:v,models:[]}]};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>
+                              <SortableList
+                                items={brandObj.series||[]}
+                                onReorder={arr=>{const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...brandObj,series:arr};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                onDelete={(ser)=>{if(!confirm(`刪除系列「${ser.name}」？`))return;const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=(brandObj.series||[]).filter(s=>s.name!==ser.name);nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                onEdit={(ser,si2,newName)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];const idx=ns.findIndex(s=>s.name===ser.name);if(idx>=0)ns[idx]={...ns[idx],name:newName};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                renderLabel={(serObj)=>{
+                                  const idx=(brandObj.series||[]).findIndex(s=>s.name===serObj.name);
+                                  const sKey=bKey+"_"+idx;
+                                  const sCollapsed=!!invCollapsed[sKey];
+                                  return(
+                                    <div style={{width:"100%"}} onClick={e=>e.stopPropagation()}>
+                                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:sCollapsed?0:6}}>
+                                        <EditableText value={serObj.name} onSave={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[idx]={...serObj,name:v};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>
+                                        <span style={{color:C.textDim,fontSize:11,flexShrink:0}}>{serObj.models.length} 型號</span>
+                                        <span onClick={()=>toggle(sKey)} style={{color:C.textMid,fontSize:14,transform:sCollapsed?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 4px",flexShrink:0}}>⌃</span>
+                                      </div>
+                                      {!sCollapsed&&(
+                                        <div style={{paddingLeft:8}}>
+                                          <InvAddRow placeholder="新增型號" onAdd={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[idx]={...serObj,models:[...serObj.models,v]};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>
+                                          <SortableList
+                                            items={serObj.models}
+                                            onReorder={arr=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[idx]={...serObj,models:arr};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                            onDelete={(_,mi)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];ns[idx]={...serObj,models:serObj.models.filter((_,i)=>i!==mi)};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                            onEdit={(_,mi,v)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(brandObj.series||[])];const nm=[...serObj.models];nm[mi]=v;ns[idx]={...serObj,models:nm};nb[bi]={...brandObj,series:ns};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }}
+                  />
+                ) : (
+                  /* 一般模式：顯示品牌+庫存 */
+                  (catObj.brands||[]).map((brandObj,bi)=>{
                   const bKey=colKey+"_"+brandObj.brand;
                   const bCollapsed=!!invCollapsed[bKey];
                   return(
                     <div key={brandObj.brand} style={{marginBottom:8,background:"rgba(0,30,80,0.3)",borderRadius:10,overflow:"hidden"}}>
-                      {/* 品牌標題 */}
                       <div style={{display:"flex",alignItems:"center",padding:"9px 12px",background:"rgba(0,40,100,0.4)",gap:8}}>
-                        <div style={{flex:1}} onClick={e=>e.stopPropagation()}>
-                          {managing
-                            ? <EditableText value={brandObj.brand} onSave={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...brandObj,brand:v};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>
-                            : <span style={{color:C.accent,fontWeight:700,fontSize:13}}>📱 {brandObj.brand}</span>
-                          }
-                        </div>
-                        {managing&&<button onClick={()=>{if(!confirm(`刪除品牌「${brandObj.brand}」？`))return;const nc=[...cats];const nb=(catObj.brands||[]).filter((_,i)=>i!==bi);nc[realCi]={...catObj,brands:nb};updateCats(nc);}} style={{background:"rgba(255,50,80,0.15)",border:`1px solid ${C.red}55`,borderRadius:7,color:C.red,cursor:"pointer",fontSize:11,fontWeight:700,padding:"2px 7px",fontFamily:"inherit"}}>刪</button>}
+                        <span style={{color:C.accent,fontWeight:700,fontSize:13,flex:1}}>📱 {brandObj.brand}</span>
                         <span onClick={()=>toggle(bKey)} style={{color:C.accent,fontSize:16,transform:bCollapsed?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 4px"}}>⌃</span>
                       </div>
-
                       {!bCollapsed&&(
                         <div style={{padding:"8px 12px"}}>
-                          {/* 管理：新增系列 */}
-                          {managing&&<InvAddRow placeholder="新增系列（如：iPhone 16 系列）" onAdd={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...brandObj,series:[...(brandObj.series||[]),{name:v,models:[]}]};nc[realCi]={...catObj,brands:nb};updateCats(nc);}}/>}
+                          {(brandObj.series||[]).map((serObj,si2)=>{
+                            const sKey=bKey+"_"+si2;
+                            const sCollapsed=!!invCollapsed[sKey];
+                            return(
+                              <div key={si2} style={{marginBottom:6,background:"rgba(0,20,60,0.3)",borderRadius:9,overflow:"hidden"}}>
+                                <div style={{display:"flex",alignItems:"center",padding:"8px 12px",background:"rgba(0,30,80,0.35)",gap:8}}>
+                                  <span style={{color:C.textMid,fontSize:12,flex:1}}>▸ {serObj.name}</span>
+                                  <span style={{color:C.textDim,fontSize:11}}>{serObj.models.length} 型號</span>
+                                  <span onClick={()=>toggle(sKey)} style={{color:C.textMid,fontSize:14,transform:sCollapsed?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 4px"}}>⌃</span>
+                                </div>
+                                {!sCollapsed&&(
+                                  <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:3,padding:"6px 8px"}}>
+                                    <div style={{color:C.textDim,fontSize:10,fontWeight:700,padding:"3px 6px"}}>型號</div>
+                                    <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>進貨</div>
+                                    <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>已用</div>
+                                    <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>庫存</div>
+                                    {serObj.models.map(m=>{
+                                      const sk=stock[catObj.cat+"__"+brandObj.brand+"__"+m]||{totalIn:0,totalUsed:0,stock:0};
+                                      const zero=sk.stock<=0&&sk.totalIn>0;
+                                      const low=!zero&&sk.stock<=2&&sk.totalIn>0;
+                                      return(
+                                        <React.Fragment key={m}>
+                                          <div style={{color:sk.totalIn===0?C.textDim:C.text,fontSize:12,padding:"5px 6px",display:"flex",alignItems:"center",gap:4}}>
+                                            {m}{zero&&<span style={{color:C.red,fontSize:9,fontWeight:800}}>缺</span>}{low&&<span style={{color:C.orange,fontSize:9}}>⚠️</span>}
+                                          </div>
+                                          <div style={{color:sk.totalIn>0?C.green:C.textDim,fontSize:13,fontWeight:700,textAlign:"center",padding:"5px 0"}}>{sk.totalIn>0?sk.totalIn:"-"}</div>
+                                          <div style={{color:C.textMid,fontSize:13,textAlign:"center",padding:"5px 0"}}>{sk.totalUsed>0?sk.totalUsed:"-"}</div>
+                                          <div style={{color:zero?C.red:low?C.orange:sk.totalIn>0?C.accent:C.textDim,fontSize:14,fontWeight:800,textAlign:"center",padding:"5px 0"}}>{sk.totalIn>0?sk.stock:"-"}</div>
+                                        </React.Fragment>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+                )}
 
                           {/* 系列列表 — 管理模式用 SortableList 排序 */}
                           {managing ? (
