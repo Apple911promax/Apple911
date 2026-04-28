@@ -1800,72 +1800,19 @@ function AdminPage({catalog,setCatalog,isBoss}) {
         /></Card>
         <Card>
           <H>📦 零件品項 & 型號（庫存用）</H>
-          <div style={{color:C.textDim,fontSize:11,marginBottom:10}}>點品項展開，可新增/刪除型號</div>
-          {(catalog.purchaseCategories||DEF.purchaseCategories).map((catObj,ci)=>{
-            const colKey="picol_"+catObj.cat;
-            const collapsed=!!newSeriesName[colKey];
-            return(
-              <div key={catObj.cat} style={{marginBottom:8,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
-                {/* 品項標題 */}
-                <div onClick={()=>setNewSeriesName(p=>({...p,[colKey]:!p[colKey]}))}
-                  style={{display:"flex",justifyContent:"space-between",alignItems:"center",
-                    padding:"10px 12px",background:"rgba(0,40,100,0.3)",cursor:"pointer",userSelect:"none"}}>
-                  <span style={{color:C.text,fontWeight:700}}>{catObj.cat}</span>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{color:C.textDim,fontSize:11}}>{catObj.variants.length} 型號</span>
-                    <span style={{color:C.accent,fontSize:16,transform:collapsed?"rotate(0)":"rotate(180deg)",transition:"transform .2s",display:"inline-block"}}>⌃</span>
-                  </div>
-                </div>
-                {/* 型號列表 */}
-                {!collapsed&&(
-                  <div style={{padding:"10px 12px"}}>
-                    <SortableList
-                      items={catObj.variants}
-                      onReorder={arr=>{
-                        const cats=[...(catalog.purchaseCategories||DEF.purchaseCategories)];
-                        cats[ci]={...catObj,variants:arr};
-                        sc({...catalog,purchaseCategories:cats});
-                      }}
-                      onDelete={(_,vi)=>{
-                        const cats=[...(catalog.purchaseCategories||DEF.purchaseCategories)];
-                        cats[ci]={...catObj,variants:catObj.variants.filter((_,j)=>j!==vi)};
-                        sc({...catalog,purchaseCategories:cats});
-                      }}
-                      onEdit={(_,vi,v)=>{
-                        const cats=[...(catalog.purchaseCategories||DEF.purchaseCategories)];
-                        const vars=[...catObj.variants]; vars[vi]=v;
-                        cats[ci]={...catObj,variants:vars};
-                        sc({...catalog,purchaseCategories:cats});
-                      }}
-                    />
-                    {/* 新增型號 */}
-                    {sb===`pi_${ci}`?(
-                      <div style={{display:"flex",gap:6,marginTop:6}}>
-                        <Input value={nm} onChange={e=>setNm(e.target.value)} placeholder="型號名稱（如：iPhone 15 Pro）" style={{marginBottom:0}}/>
-                        <Btn sm onClick={()=>{if(!nm)return;
-                          const cats=[...(catalog.purchaseCategories||DEF.purchaseCategories)];
-                          cats[ci]={...catObj,variants:[...catObj.variants,nm]};
-                          sc({...catalog,purchaseCategories:cats});
-                          setNm("");setSb("");
-                        }}>新增</Btn>
-                        <Btn v="ghost" sm onClick={()=>setSb("")}>取消</Btn>
-                      </div>
-                    ):<Btn v="ghost" sm onClick={()=>setSb(`pi_${ci}`)} style={{marginTop:6}}>＋ 新增型號</Btn>}
-                  </div>
-                )}
+          <div style={{color:C.textDim,fontSize:12,marginBottom:12,lineHeight:1.7}}>
+            零件品項的四層結構（品項→品牌→系列→型號）<br/>
+            請到 <span style={{color:C.accent,fontWeight:700}}>🗃️ 庫存</span> 頁面右上角點 <span style={{color:C.accent,fontWeight:700}}>⚙️ 管理</span> 進行編輯
+          </div>
+          <div style={{background:"rgba(0,60,140,0.2)",border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px"}}>
+            {(catalog.purchaseCategories||DEF.purchaseCategories).slice(0,5).map(x=>(
+              <div key={x.cat} style={{color:C.textMid,fontSize:13,padding:"4px 0",borderBottom:`1px solid ${C.border}`}}>
+                📦 {x.cat} — {(x.brands||[]).length} 個品牌
               </div>
-            );
-          })}
-          {/* 新增品項大類 */}
-          <div style={{marginTop:10}}>
-            <div style={{color:C.textDim,fontSize:11,marginBottom:6}}>新增品項大類</div>
-            {addRow(npi,()=>{
-              if(!npi)return;
-              const cats=[...(catalog.purchaseCategories||DEF.purchaseCategories)];
-              cats.push({cat:npi,variants:["通用"]});
-              sc({...catalog,purchaseCategories:cats});
-              setNpi("");
-            },setNpi,"品項名稱（如：電容、喇叭）")}
+            ))}
+            {(catalog.purchaseCategories||DEF.purchaseCategories).length>5&&(
+              <div style={{color:C.textDim,fontSize:11,marginTop:6}}>...共 {(catalog.purchaseCategories||DEF.purchaseCategories).length} 個品項</div>
+            )}
           </div>
         </Card>
       </div>)}
@@ -2102,25 +2049,28 @@ function App() {
     const mergeCatalog = raw => {
       if(!raw) return DEF;
 
-      // 強制更新 iPad 和 MacBook 的系列資料（從 DEF 取最新 A 碼）
-      const appleDefault = null; // iPad/Mac now separate brands
-      // Force update brand names from DEF (handles old Firebase data)
+      // Force update brand names from DEF
       const fixedBrands = (raw.brands||DEF.brands).map(rb=>{
         const defBrand = DEF.brands.find(db=>db.id===rb.id);
         if(defBrand && defBrand.name!==rb.name) return {...rb, name:defBrand.name};
         return rb;
       });
-      // Add any new DEF brands not in Firebase
       DEF.brands.forEach(db=>{
         if(!fixedBrands.find(rb=>rb.id===db.id)) fixedBrands.push(db);
       });
+
+      // 強制更新 purchaseCategories：
+      // 如果 Firebase 的資料是舊格式（有 variants 沒有 brands），用 DEF 的四層結構取代
+      const rawCats = raw.purchaseCategories || [];
+      const isOldFormat = rawCats.length > 0 && rawCats[0].variants !== undefined && !rawCats[0].brands;
+      const fixedCats = isOldFormat ? DEF.purchaseCategories : (rawCats.length > 0 ? rawCats : DEF.purchaseCategories);
 
       return {...DEF,...raw,
         brands: fixedBrands,
         paymentMethods:raw.paymentMethods||DEF.paymentMethods,
         vendors:raw.vendors?.length?raw.vendors:DEF.vendors,
         purchaseItems:raw.purchaseItems||DEF.purchaseItems,
-        purchaseCategories:raw.purchaseCategories||DEF.purchaseCategories,
+        purchaseCategories: fixedCats,
         expenseTypes:raw.expenseTypes||DEF.expenseTypes,
       };
     };
