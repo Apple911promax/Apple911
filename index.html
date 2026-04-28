@@ -993,19 +993,10 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
       <div style={{display:"flex",gap:7,marginBottom:8,flexWrap:"wrap"}}>
         <select value={fy} onChange={e=>setFy(Number(e.target.value))} style={selBase}>{years.map(y=><option key={y} value={y}>{y}年</option>)}</select>
         <select value={fm} onChange={e=>{setFm(Number(e.target.value));setFd("全部");}} style={selBase}>{MZ.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select>
+        <select value={fd} onChange={e=>setFd(e.target.value)} style={selBase}>
+          {daysInMonth.map(d=><option key={d} value={d}>{d==="全部"?"全部日期":d}</option>)}
+        </select>
         <Btn sm onClick={()=>setView("new")}>＋ 新增工單</Btn>
-      </div>
-
-      {/* 日期快速篩選 */}
-      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10,overflowX:"auto"}}>
-        {daysInMonth.map(d=>(
-          <button key={d} onClick={()=>setFd(d)} style={{
-            padding:"5px 10px",borderRadius:16,border:"none",cursor:"pointer",flexShrink:0,
-            fontSize:12,fontWeight:600,fontFamily:"inherit",
-            background:fd===d?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(255,255,255,0.07)",
-            color:fd===d?"#fff":C.textMid,
-          }}>{d==="全部"?"全部":d.slice(5)}</button>
-        ))}
       </div>
 
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="搜尋品牌/型號/客戶/項目…" style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",marginBottom:10}}/>
