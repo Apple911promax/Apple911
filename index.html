@@ -565,6 +565,584 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
 
   function togglePay(p)    { setPayments(ps=>ps.includes(p)?ps.filter(x=>x!==p):[...ps,p]); }
   function toggleVendor(v) { setVendors(vs=>vs.includes(v)?vs.filter(x=>x!==v):[...vs,v]); }
+  // 查最新進貨單價：智慧關鍵字比對
+  function getLatestCost(stockItem, itemName) {
+    if(!purchases?.length) return null;
+    const cur = modelName;
+
+    // 從維修項目名稱抽取零件關鍵字（去掉動詞）
+    const cleanName = (itemName||"").replace(/更換|維修|安裝|修復|代工|清洗|升級/g,"").trim();
+    const keywords = [...new Set([stockItem, itemName, cleanName].filter(Boolean))];
+
+    function matches(p) {
+      const cat = (p.itemCat||p.itemName||"").toLowerCase();
+      return keywords.some(kw => {
+        const k = (kw||"").toLowerCase();
+        return k.length>0 && (cat.includes(k) || k.includes(cat));
+      });
+    }
+
+    const pool = purchases.filter(p => matches(p) && p.amount && p.qty)
+      .sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+
+    if(!pool.length) return null;
+
+    const vMatch = (p) => vendors?.some(v=>(p.vendorName||"").includes(v)||(v||"").includes(p.vendorName||""));
+
+    // 優先：廠商+型號符合
+    if(vendors?.length) {
+      const ve = pool.find(p=>vMatch(p)&&p.itemVariant===cur);
+      if(ve) return Math.round(Number(ve.amount)/(Number(ve.qty)||1));
+      const va = pool.find(p=>vMatch(p));
+      if(va) return Math.round(Number(va.amount)/(Number(va.qty)||1));
+    }
+
+    const exact = pool.find(p=>p.itemVariant===cur);
+    const p = exact || pool[0];
+    return Math.round(Number(p.amount)/(Number(p.qty)||1));
+  }
+
+
+// ─── FIREBASE CONFIG ──────────────────────────────────────────────────────────
+const FB_PROJECT = "apple911-90eb6";
+const FB_API_KEY  = "AIzaSyDdUgUX9SSi1CFcvKV7tVWirBpUEQugpy4";
+const FB_BASE     = `https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents`;
+
+// ─── FIRESTORE REST HELPERS ───────────────────────────────────────────────────
+// Converts a JS value → Firestore field value format
+function toFS(val) {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === "boolean") return { booleanValue: val };
+  if (typeof val === "number") return { doubleValue: val };
+  if (typeof val === "string") return { stringValue: val };
+  if (Array.isArray(val)) return { arrayValue: { values: val.map(toFS) } };
+  if (typeof val === "object") {
+    const fields = {};
+    for (const k of Object.keys(val)) fields[k] = toFS(val[k]);
+    return { mapValue: { fields } };
+  }
+  return { stringValue: String(val) };
+}
+// Converts Firestore field value → JS value
+function fromFS(fv) {
+  if (!fv) return null;
+  if ("nullValue"    in fv) return null;
+  if ("booleanValue" in fv) return fv.booleanValue;
+  if ("integerValue" in fv) return Number(fv.integerValue);
+  if ("doubleValue"  in fv) return fv.doubleValue;
+  if ("stringValue"  in fv) return fv.stringValue;
+  if ("arrayValue"   in fv) return (fv.arrayValue.values||[]).map(fromFS);
+  if ("mapValue"     in fv) {
+    const obj = {};
+    for (const k of Object.keys(fv.mapValue.fields||{}))
+      obj[k] = fromFS(fv.mapValue.fields[k]);
+    return obj;
+  }
+  return null;
+}
+
+const COL = "apple911";
+
+async function cloudSave(key, value) {
+  try {
+    const body = { fields: { value: toFS(value) } };
+    await fetch(`${FB_BASE}/${COL}/${key}?key=${FB_API_KEY}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch(e) { console.warn("cloudSave error", e); }
+}
+
+async function cloudLoad(key, def) {
+  try {
+    const r = await fetch(`${FB_BASE}/${COL}/${key}?key=${FB_API_KEY}`);
+    if (!r.ok) return def;
+    const data = await r.json();
+    if (data.fields && data.fields.value) return fromFS(data.fields.value);
+    return def;
+  } catch(e) { console.warn("cloudLoad error", e); return def; }
+}
+
+// ─── LOCAL FALLBACK ───────────────────────────────────────────────────────────
+const SK = { orders:"a911_orders", purchases:"a911_purchases", expenses:"a911_expenses", catalog:"a911_catalog" };
+const localLoad = (k,d) => { try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;} };
+const localSave = (k,v) => { try{localStorage.setItem(k,JSON.stringify(v));}catch{} };
+
+async function save(key, value) {
+  localSave(key, value);       // instant local write
+  cloudSave(key, value);       // async cloud write (no await = non-blocking)
+}
+function load(k, d) { return localLoad(k, d); }
+
+const uid  = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const fmt  = n  => `NT$ ${Number(n||0).toLocaleString()}`;
+const mkey = (y,m) => `${y}-${String(m).padStart(2,"0")}`;
+const today= () => new Date().toISOString().slice(0,10);
+const nowYM= () => { const d=new Date(); return {y:d.getFullYear(),m:d.getMonth()+1}; };
+const MZ   = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+// ─── CUSTOM DATE PICKER (全數字，無英文) ──────────────────────────────────────
+// ── DatePicker: 完全自製，iOS 100% 相容 ──────────────────────────────────────
+function DatePicker({value, onChange, label}) {
+  const parts = value ? value.split("-") : ["","",""];
+  const y = parts[0]||""; const m = parts[1]||""; const d = parts[2]||"";
+  const [picking, setPicking] = useState(null); // "y" | "m" | "d" | null
+
+  const thisY = new Date().getFullYear();
+  const years  = Array.from({length: thisY+2-2025+1}, (_,i)=>2025+i);
+  const months = Array.from({length:12}, (_,i)=>i+1);
+  const daysInMonth = (y&&m) ? new Date(Number(y),Number(m),0).getDate() : 31;
+  const days = Array.from({length:daysInMonth}, (_,i)=>i+1);
+
+  function pick(field, val) {
+    const ny = field==="y"?val:y;
+    const nm = field==="m"?String(val).padStart(2,"0"):m;
+    const nd = field==="d"?String(val).padStart(2,"0"):d;
+    if(ny&&nm&&nd) onChange(`${ny}-${nm}-${nd}`);
+    setPicking(null);
+  }
+
+  const displayY = y || "年";
+  const displayM = m ? `${Number(m)}月` : "月";
+  const displayD = d ? `${Number(d)}日` : "日";
+
+  const BtnSt = (active) => ({
+    background: active ? `linear-gradient(135deg,${C.accent2},${C.accent})` : "rgba(0,30,90,0.6)",
+    border: `1.5px solid ${active ? C.accent : C.border}`,
+    borderRadius:8, color: active ? "#fff" : C.text,
+    padding:"10px 0", fontSize:15, fontWeight:700,
+    cursor:"pointer", fontFamily:"inherit",
+    boxShadow: active ? `0 0 12px ${C.accent}55` : "none",
+    flex:1, textAlign:"center",
+  });
+
+  return (
+    <div style={{marginBottom:10}}>
+      {label&&<div style={{color:C.textDim,fontSize:11,fontWeight:600,letterSpacing:.7,textTransform:"uppercase",marginBottom:5}}>{label}</div>}
+
+      {/* 三個顯示按鈕 */}
+      <div style={{display:"flex",gap:6,marginBottom:6}}>
+        <button style={BtnSt(picking==="y")} onClick={()=>setPicking(p=>p==="y"?null:"y")}>{displayY}</button>
+        <button style={BtnSt(picking==="m")} onClick={()=>setPicking(p=>p==="m"?null:"m")}>{displayM}</button>
+        <button style={BtnSt(picking==="d")} onClick={()=>setPicking(p=>p==="d"?null:"d")}>{displayD}</button>
+      </div>
+
+      {/* 年選擇 */}
+      {picking==="y"&&(
+        <div style={{background:"rgba(0,15,50,0.97)",border:`1.5px solid ${C.accent}`,borderRadius:12,padding:10,display:"flex",gap:8,flexWrap:"wrap",marginBottom:6}}>
+          {years.map(yr=>(
+            <button key={yr} onClick={()=>pick("y",yr)} style={{
+              padding:"10px 16px",borderRadius:9,border:"none",cursor:"pointer",fontSize:15,fontWeight:700,fontFamily:"inherit",
+              background:String(yr)===String(y)?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(0,40,120,0.5)",
+              color:String(yr)===String(y)?"#fff":C.text,
+            }}>{yr}</button>
+          ))}
+        </div>
+      )}
+
+      {/* 月選擇 - 4x3 格子 */}
+      {picking==="m"&&(
+        <div style={{background:"rgba(0,15,50,0.97)",border:`1.5px solid ${C.accent}`,borderRadius:12,padding:10,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:6}}>
+          {months.map(mo=>(
+            <button key={mo} onClick={()=>pick("m",mo)} style={{
+              padding:"14px 0",borderRadius:9,border:"none",cursor:"pointer",fontSize:16,fontWeight:700,fontFamily:"inherit",
+              background:String(mo)===String(Number(m))?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(0,40,120,0.5)",
+              color:String(mo)===String(Number(m))?"#fff":C.text,
+            }}>{mo}月</button>
+          ))}
+        </div>
+      )}
+
+      {/* 日選擇 - 7列 */}
+      {picking==="d"&&(
+        <div style={{background:"rgba(0,15,50,0.97)",border:`1.5px solid ${C.accent}`,borderRadius:12,padding:10,display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:6}}>
+          {days.map(dy=>(
+            <button key={dy} onClick={()=>pick("d",dy)} style={{
+              padding:"12px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,fontFamily:"inherit",
+              background:String(dy)===String(Number(d))?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(0,40,120,0.5)",
+              color:String(dy)===String(Number(d))?"#fff":C.text,
+            }}>{dy}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+const ADMIN_PIN   = "0909";  // 後台管理員密碼（老闆才看得到此頁）
+const BOSS_PASS   = "0909";  // 👑 老闆密碼（可進入後台）
+const STAFF_PASS  = "0517";  // 👤 員工密碼（不能進後台）
+
+// ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
+function LoginScreen({ onLogin }) {
+  const [pw, setPw]     = useState("");
+  const [err, setErr]   = useState(false);
+  const [show, setShow] = useState(false);
+
+  function tryLogin() {
+    if (pw === BOSS_PASS) {
+      sessionStorage.setItem("a911_auth", "boss");
+      onLogin("boss");
+    } else if (pw === STAFF_PASS) {
+      sessionStorage.setItem("a911_auth", "staff");
+      onLogin("staff");
+    } else {
+      setErr(true);
+      setPw("");
+      setTimeout(() => setErr(false), 2000);
+    }
+  }
+
+  return (
+    <div style={{
+      minHeight:"100vh", background:"linear-gradient(135deg,#020c1b 0%,#050d1a 50%,#061240 100%)",
+      display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+      fontFamily:"'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif",
+      padding:"24px", position:"relative", overflow:"hidden",
+    }}>
+      <div style={{position:"fixed",top:-100,left:-100,width:400,height:400,background:"radial-gradient(circle,rgba(0,100,255,0.12),transparent 65%)",pointerEvents:"none"}}/>
+      <div style={{position:"fixed",bottom:-80,right:-60,width:350,height:350,background:"radial-gradient(circle,rgba(0,150,255,0.08),transparent 65%)",pointerEvents:"none"}}/>
+
+      <div style={{marginBottom:24}}>
+        <img src={LOGO_SRC} alt="Apple 911"
+          style={{width:110,height:110,borderRadius:24,boxShadow:"0 0 40px rgba(0,120,255,0.5)",display:"block"}}/>
+      </div>
+
+      <div style={{color:"#fff",fontWeight:900,fontSize:26,letterSpacing:2,marginBottom:4}}>Apple 911</div>
+      <div style={{color:"#5580aa",fontSize:13,marginBottom:36,letterSpacing:1}}>維修管理系統 Pro</div>
+
+      <div style={{
+        background:"rgba(8,28,68,0.8)",
+        border:`1.5px solid ${err?"rgba(255,60,90,0.5)":"rgba(0,160,255,0.2)"}`,
+        borderRadius:18, padding:"28px", width:"100%", maxWidth:340,
+        backdropFilter:"blur(20px)",
+        boxShadow: err?"0 0 20px rgba(255,60,90,0.2)":"0 0 30px rgba(0,80,200,0.15)",
+        transition:"all .3s", boxSizing:"border-box",
+      }}>
+        <div style={{color:"#7bb8f5",fontSize:12,fontWeight:600,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>請輸入系統密碼</div>
+        <div style={{position:"relative",marginBottom:16}}>
+          <input
+            type={show?"text":"password"}
+            value={pw}
+            onChange={e=>{setPw(e.target.value);setErr(false);}}
+            onKeyDown={e=>e.key==="Enter"&&tryLogin()}
+            placeholder="輸入密碼"
+            autoFocus
+            style={{
+              width:"100%", boxSizing:"border-box",
+              background:"rgba(0,30,90,0.5)",
+              border:`1.5px solid ${err?"rgba(255,60,90,0.6)":"rgba(0,160,255,0.25)"}`,
+              borderRadius:10, color:"#e0f0ff",
+              padding:"13px 44px 13px 16px",
+              fontSize:16, outline:"none", fontFamily:"inherit",
+              transition:"border .2s",
+            }}
+          />
+          <button onClick={()=>setShow(s=>!s)} style={{
+            position:"absolute", right:12, top:"50%", transform:"translateY(-50%)",
+            background:"none", border:"none", cursor:"pointer",
+            color:"#5580aa", fontSize:16, padding:0,
+          }}>{show?"🙈":"👁️"}</button>
+        </div>
+
+        {err&&<div style={{color:"#ff3d5a",fontSize:12,fontWeight:700,textAlign:"center",marginBottom:12}}>❌ 密碼錯誤，請重試</div>}
+
+        <button onClick={tryLogin} style={{
+          width:"100%", padding:"13px",
+          background:"linear-gradient(135deg,#0050ee,#00c2ff)",
+          border:"none", borderRadius:10, color:"#fff",
+          fontSize:15, fontWeight:800, cursor:"pointer",
+          boxShadow:"0 4px 20px rgba(0,120,255,0.4)",
+          fontFamily:"inherit", letterSpacing:.5,
+        }}>進入系統 →</button>
+      </div>
+
+      <div style={{color:"#2a4060",fontSize:11,marginTop:24}}>© Apple 911 HZ · 維修管理系統</div>
+    </div>
+  );
+}
+
+
+// ─── 零件品項 → 維修項目 對照表（進貨品項名稱對應工單維修項目）
+// 系統用進貨品項名稱對應工單中的零件消耗
+const ITEM_MAP = {
+  "螢幕":   ["螢幕總成更換","玻璃破裂不換總成"],
+  "電池":   ["電池更換"],
+  "後鏡頭": ["後鏡頭更換"],
+  "前鏡頭": ["前鏡頭更換"],
+  "尾插":   ["尾插更換"],
+  "主板":   ["主板維修"],
+  "充電IC": ["充電IC維修"],
+  "背蓋":   ["背蓋更換"],
+  "中框":   ["中框更換"],
+  "按鍵":   ["按鍵更換"],
+};
+
+// ─── DEFAULT CATALOG ──────────────────────────────────────────────────────────
+const DEF = {
+  brands: [
+    { id:"samsung", name:"三星 Samsung", series:[
+      { name:"S 系列", models:["Galaxy S25 Ultra","Galaxy S25+","Galaxy S25","Galaxy S24 Ultra","Galaxy S24+","Galaxy S24"] },
+      { name:"Z 摺疊系列", models:["Galaxy Z Fold6","Galaxy Z Fold5","Galaxy Z Flip6","Galaxy Z Flip5"] },
+      { name:"A 系列", models:["Galaxy A55","Galaxy A35","Galaxy A54","Galaxy A34","Galaxy A25"] },
+    ]},
+    { id:"oppo", name:"OPPO", series:[
+      { name:"Find X 系列", models:["Find X8 Ultra","Find X8 Pro","Find X7 Ultra","Find X6 Pro"] },
+      { name:"Reno 系列",   models:["Reno 12 Pro","Reno 11 Pro","Reno 10 Pro"] },
+      { name:"A 系列",      models:["A3 Pro","A98","A78","A58"] },
+    ]},
+    { id:"xiaomi", name:"小米 Xiaomi", series:[
+      { name:"小米 數字系列", models:["15 Ultra","15 Pro","15","14 Ultra","14 Pro","14"] },
+      { name:"Redmi 系列",   models:["Redmi Note 13 Pro+","Redmi Note 13 Pro","Redmi 13C"] },
+    ]},
+    { id:"asus", name:"ASUS", series:[
+      { name:"ROG Phone", models:["ROG Phone 9 Pro","ROG Phone 8 Pro","ROG Phone 7"] },
+      { name:"Zenfone",   models:["Zenfone 11 Ultra","Zenfone 10","Zenfone 9"] },
+    ]},
+  ],
+  repairItems: [
+    {id:"r1", cat:"螢幕類",      name:"螢幕總成更換",     stockItem:"螢幕",   defaultCost:800,  defaultPrice:1500},
+    {id:"r2", cat:"螢幕類",      name:"玻璃破裂不換總成", stockItem:"螢幕",   defaultCost:200,  defaultPrice:500},
+    {id:"r3", cat:"電池類",      name:"電池更換",         stockItem:"電池",   defaultCost:300,  defaultPrice:800},
+    {id:"r4", cat:"主板零件",    name:"主板維修",         stockItem:"主板",   defaultCost:500,  defaultPrice:2000},
+    {id:"r5", cat:"主板零件",    name:"充電IC維修",       stockItem:"充電IC", defaultCost:200,  defaultPrice:600},
+    {id:"r6", cat:"相機/尾插/外設",name:"後鏡頭更換",     stockItem:"後鏡頭", defaultCost:400,  defaultPrice:1000},
+    {id:"r7", cat:"相機/尾插/外設",name:"尾插更換",       stockItem:"尾插",   defaultCost:200,  defaultPrice:600},
+    {id:"r8", cat:"相機/尾插/外設",name:"前鏡頭更換",     stockItem:"前鏡頭", defaultCost:200,  defaultPrice:500},
+    {id:"r9", cat:"外殼/中框",   name:"背蓋更換",         stockItem:"背蓋",   defaultCost:300,  defaultPrice:800},
+    {id:"r10",cat:"外殼/中框",   name:"中框更換",         stockItem:"中框",   defaultCost:500,  defaultPrice:1200},
+    {id:"r11",cat:"外殼/中框",   name:"按鍵更換",         stockItem:"按鍵",   defaultCost:100,  defaultPrice:300},
+    {id:"a1", cat:"鋼化玻璃貼",  name:"9H鋼化保護貼",     stockItem:"",       defaultCost:50,   defaultPrice:150},
+    {id:"a2", cat:"鋼化玻璃貼",  name:"隱私保護貼",       stockItem:"",       defaultCost:80,   defaultPrice:200},
+    {id:"a3", cat:"鋼化玻璃貼",  name:"霧面保護貼",       stockItem:"",       defaultCost:70,   defaultPrice:180},
+    {id:"a4", cat:"手機殼",      name:"透明保護殼",       stockItem:"",       defaultCost:60,   defaultPrice:150},
+    {id:"a5", cat:"手機殼",      name:"皮革手機殼",       stockItem:"",       defaultCost:120,  defaultPrice:280},
+    {id:"a6", cat:"充電線材",    name:"USB-C 充電線",     stockItem:"",       defaultCost:80,   defaultPrice:200},
+    {id:"a7", cat:"充電線材",    name:"Lightning 充電線", stockItem:"",       defaultCost:80,   defaultPrice:200},
+    {id:"a8", cat:"充電線材",    name:"MagSafe 充電線",   stockItem:"",       defaultCost:150,  defaultPrice:380},
+    {id:"a9", cat:"快充頭",      name:"20W 快充頭",        stockItem:"",       defaultCost:120,  defaultPrice:280},
+    {id:"a10",cat:"快充頭",      name:"65W 氮化鎵快充",   stockItem:"",       defaultCost:200,  defaultPrice:450},
+    {id:"a11",cat:"其他周邊",    name:"無線充電板",        stockItem:"",       defaultCost:150,  defaultPrice:350},
+    {id:"a12",cat:"其他周邊",    name:"防塵塞套組",        stockItem:"",       defaultCost:20,   defaultPrice:80},
+  ],
+  vendors:       ["駿霆","上湛","即時通","淘寶","其他廠商"],
+  paymentMethods:["現金","Line Pay","轉帳","街口支付","信用卡"],
+  purchaseCategories: [
+    { cat:"電池", brands:[
+      { brand:"iPhone", series:[
+        { name:"iPhone 16 系列", models:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },
+        { name:"iPhone 15 系列", models:["iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15"] },
+        { name:"iPhone 14 系列", models:["iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14"] },
+        { name:"iPhone 13 系列", models:["iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini"] },
+        { name:"iPhone 12 系列", models:["iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini"] },
+        { name:"iPhone 11 系列", models:["iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11"] },
+        { name:"iPhone SE 系列", models:["iPhone SE (3rd)","iPhone SE (2nd)"] },
+      ]},
+      { brand:"iPad", series:[
+        { name:"iPad Pro", models:["iPad Pro 13吋 M4","iPad Pro 11吋 M4","iPad Pro 12.9吋 第6代","iPad Pro 11吋 第4代"] },
+        { name:"iPad Air", models:["iPad Air 13吋 M2","iPad Air 11吋 M2","iPad Air 第5代"] },
+        { name:"iPad mini", models:["iPad mini A17 Pro","iPad mini 第6代"] },
+        { name:"iPad",     models:["iPad 第10代","iPad 第9代"] },
+      ]},
+      { brand:"Mac", series:[
+        { name:"MacBook Pro", models:["MacBook Pro 16吋 M3","MacBook Pro 14吋 M3","MacBook Pro 16吋 M2","MacBook Pro 14吋 M2"] },
+        { name:"MacBook Air", models:["MacBook Air 15吋 M3","MacBook Air 13吋 M3","MacBook Air 13吋 M2"] },
+      ]},
+    ]},
+    { cat:"螢幕", brands:[
+      { brand:"iPhone", series:[
+        { name:"iPhone 16 系列", models:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },
+        { name:"iPhone 15 系列", models:["iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15"] },
+        { name:"iPhone 14 系列", models:["iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14"] },
+        { name:"iPhone 13 系列", models:["iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13","iPhone 13 mini"] },
+        { name:"iPhone 12 系列", models:["iPhone 12 Pro Max","iPhone 12 Pro","iPhone 12","iPhone 12 mini"] },
+        { name:"iPhone 11 系列", models:["iPhone 11 Pro Max","iPhone 11 Pro","iPhone 11"] },
+      ]},
+      { brand:"iPad", series:[
+        { name:"iPad Pro", models:["iPad Pro 13吋 M4","iPad Pro 11吋 M4","iPad Pro 12.9吋 第6代","iPad Pro 11吋 第4代"] },
+        { name:"iPad Air", models:["iPad Air 13吋 M2","iPad Air 11吋 M2"] },
+        { name:"iPad mini", models:["iPad mini A17 Pro","iPad mini 第6代"] },
+      ]},
+    ]},
+    { cat:"後鏡頭", brands:[
+      { brand:"iPhone", series:[
+        { name:"iPhone 16 系列", models:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },
+        { name:"iPhone 15 系列", models:["iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15"] },
+        { name:"iPhone 14 系列", models:["iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14"] },
+        { name:"iPhone 13 系列", models:["iPhone 13 Pro Max","iPhone 13 Pro","iPhone 13"] },
+      ]},
+    ]},
+    { cat:"前鏡頭", brands:[
+      { brand:"iPhone", series:[
+        { name:"iPhone 16 系列", models:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },
+        { name:"iPhone 15 系列", models:["iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15"] },
+        { name:"iPhone 14 系列", models:["iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14"] },
+      ]},
+    ]},
+    { cat:"尾插", brands:[
+      { brand:"iPhone", series:[
+        { name:"iPhone 16 系列", models:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },
+        { name:"iPhone 15 系列", models:["iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15"] },
+        { name:"iPhone 14 系列", models:["iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14"] },
+      ]},
+    ]},
+    { cat:"主板", brands:[
+      { brand:"iPhone", series:[
+        { name:"iPhone 16 系列", models:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },
+        { name:"iPhone 15 系列", models:["iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15"] },
+        { name:"iPhone 14 系列", models:["iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14 Plus","iPhone 14"] },
+      ]},
+      { brand:"Mac", series:[
+        { name:"MacBook Pro", models:["MacBook Pro 16吋 M3","MacBook Pro 14吋 M3"] },
+        { name:"MacBook Air", models:["MacBook Air 15吋 M3","MacBook Air 13吋 M3"] },
+      ]},
+    ]},
+    { cat:"充電IC", brands:[
+      { brand:"iPhone", series:[
+        { name:"iPhone 16 系列", models:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },
+        { name:"iPhone 15 系列", models:["iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15"] },
+      ]},
+    ]},
+    { cat:"背蓋",  brands:[{ brand:"iPhone", series:[{ name:"iPhone 16 系列", models:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },{ name:"iPhone 15 系列", models:["iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15"] }]}]},
+    { cat:"中框",  brands:[{ brand:"iPhone", series:[{ name:"iPhone 16 系列", models:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] },{ name:"iPhone 15 系列", models:["iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15"] }]}]},
+    { cat:"按鍵",  brands:[{ brand:"iPhone", series:[{ name:"iPhone 16 系列", models:["iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16"] }]}]},
+  ],
+  purchaseItems: ["螢幕","電池","後鏡頭","前鏡頭","尾插","主板","充電IC","背蓋","中框","按鍵","螺絲耗材","防水膠","包裝袋","維修工具","清潔用品","其他"],
+  expenseTypes:  ["房租","電信費","台電電費","水費","網路費","保險費","廣告費","其他固定支出"],
+};
+
+const RCATS = ["螢幕類","電池類","主板零件","相機/尾插/外設","外殼/中框","鋼化玻璃貼","手機殼","充電線材","快充頭","其他周邊"];
+const PAY_STYLE = {
+  "現金":    {bg:"rgba(0,200,80,0.15)", bd:"rgba(0,200,80,0.4)", tx:"#00e87a",ic:"💵"},
+  "Line Pay":{bg:"rgba(0,190,60,0.13)", bd:"rgba(0,190,60,0.35)",tx:"#00cc55",ic:"💚"},
+  "轉帳":    {bg:"rgba(0,120,255,0.15)",bd:"rgba(0,120,255,0.4)",tx:"#44aaff",ic:"🏦"},
+  "街口支付":{bg:"rgba(255,110,0,0.13)",bd:"rgba(255,110,0,0.35)",tx:"#ff9933",ic:"🟠"},
+  "信用卡":  {bg:"rgba(170,80,255,0.13)",bd:"rgba(170,80,255,0.35)",tx:"#cc88ff",ic:"💳"},
+};
+
+const C = {
+  bg:"#050d1a", card:"rgba(8,28,68,0.72)",
+  border:"rgba(0,155,255,0.15)", borderHi:"rgba(0,200,255,0.4)",
+  accent:"#00c2ff", accent2:"#0050ee",
+  text:"#d0e8ff", textDim:"#4c789e", textMid:"#80a8cc",
+  green:"#00e8a0", red:"#ff3d5a", gold:"#ffc840", orange:"#ff8c40",
+};
+
+const selBase = {background:"rgba(0,20,70,0.9)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"inherit"};
+
+// ─── BASE UI ──────────────────────────────────────────────────────────────────
+const Card = ({children,hi,style}) => (
+  <div style={{background:hi?"linear-gradient(135deg,rgba(0,65,170,0.28),rgba(0,22,75,0.38))":C.card,border:`1px solid ${hi?C.borderHi:C.border}`,borderRadius:14,padding:"16px 18px",marginBottom:12,backdropFilter:"blur(16px)",boxShadow:hi?"0 0 28px rgba(0,130,255,0.12)":"none",...style}}>{children}</div>
+);
+const H = ({children}) => <div style={{color:C.accent,fontWeight:800,fontSize:15,marginBottom:12,letterSpacing:.4}}>{children}</div>;
+const Lbl = ({c}) => <div style={{color:C.textDim,fontSize:11,fontWeight:600,letterSpacing:.7,textTransform:"uppercase",marginBottom:5}}>{c}</div>;
+const Input = ({label,...p}) => (
+  <div style={{marginBottom:10}}>
+    {label&&<Lbl c={label}/>}
+    <input {...p} style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit",...p.style}} onFocus={e=>e.target.style.borderColor=C.accent} onBlur={e=>e.target.style.borderColor=C.border}/>
+  </div>
+);
+const Textarea = ({label,...p}) => (
+  <div style={{marginBottom:10}}>
+    {label&&<Lbl c={label}/>}
+    <textarea {...p} style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"11px 13px",fontSize:14,outline:"none",fontFamily:"inherit",resize:"vertical",minHeight:120,lineHeight:1.7,...p.style}} onFocus={e=>e.target.style.borderColor=C.accent} onBlur={e=>e.target.style.borderColor=C.border}/>
+  </div>
+);
+const Sel = ({label,children,...p}) => (
+  <div style={{marginBottom:10}}>
+    {label&&<Lbl c={label}/>}
+    <select {...p} style={{width:"100%",boxSizing:"border-box",background:"rgba(0,20,70,0.9)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit",...p.style}}>{children}</select>
+  </div>
+);
+const Btn = ({children,onClick,v="primary",sm,style,disabled}) => {
+  const bg={primary:`linear-gradient(135deg,${C.accent2},${C.accent})`,danger:"linear-gradient(135deg,#c0002a,#ff3d5a)",ghost:"rgba(255,255,255,0.07)"};
+  return <button onClick={onClick} disabled={disabled} style={{padding:sm?"6px 13px":"10px 20px",borderRadius:9,border:"none",cursor:disabled?"not-allowed":"pointer",fontSize:sm?12:13,fontWeight:700,fontFamily:"inherit",background:disabled?"rgba(255,255,255,0.05)":(bg[v]||bg.primary),color:disabled?C.textDim:"#fff",boxShadow:v==="primary"&&!disabled?"0 2px 16px rgba(0,120,255,0.35)":"none",transition:"all .15s",opacity:disabled?.5:1,...style}}>{children}</button>;
+};
+const Stat = ({label,value,color,icon,sub}) => (
+  <div style={{background:"linear-gradient(135deg,rgba(0,60,140,0.25),rgba(0,20,60,0.35))",border:`1px solid ${C.border}`,borderRadius:13,padding:"13px 15px",flex:1,minWidth:90}}>
+    <div style={{color:C.textDim,fontSize:11,marginBottom:3}}>{icon&&<span style={{marginRight:4}}>{icon}</span>}{label}</div>
+    <div style={{color:color||C.accent,fontSize:18,fontWeight:800,lineHeight:1.2}}>{value}</div>
+    {sub&&<div style={{color:C.textDim,fontSize:10,marginTop:2}}>{sub}</div>}
+  </div>
+);
+const Tag = ({children,color}) => <span style={{background:`${color||C.accent}22`,border:`1px solid ${color||C.accent}44`,color:color||C.accent,borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,display:"inline-block"}}>{children}</span>;
+
+// ─── STOCK CALCULATOR ─────────────────────────────────────────────────────────
+function useStock(purchases, orders, catalog) {
+  return useMemo(() => {
+    const cats = Array.isArray(catalog.purchaseCategories) ? catalog.purchaseCategories : DEF.purchaseCategories;
+    const result = {}; // key = "cat__brand__model"
+
+    cats.forEach(({cat, brands=[]}) => {
+      brands.forEach(({brand, series=[]}) => {
+        series.forEach(({models=[]}) => {
+          models.forEach(model => {
+            const key = cat + "__" + brand + "__" + model;
+            const totalIn = purchases
+              .filter(p => p.itemCat===cat && p.itemBrand===brand && p.itemVariant===model)
+              .reduce((a,p) => a+(Number(p.qty)||1), 0);
+            result[key] = { cat, brand, model, totalIn, totalUsed:0, stock:totalIn };
+          });
+        });
+      });
+    });
+    return result;
+  }, [purchases, orders, catalog]);
+}
+
+// ─── CHIPS (multi-select) ─────────────────────────────────────────────────────
+function Chips({options,selected,onToggle,getStyle,small}) {
+  return (
+    <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+      {options.map(opt => {
+        const on = selected.includes(opt);
+        const s = getStyle ? getStyle(opt,on) : {};
+        return (
+          <button key={opt} onClick={()=>onToggle(opt)} style={{
+            padding:small?"5px 11px":"7px 15px",borderRadius:20,fontFamily:"inherit",
+            border:`1.5px solid ${on?(s.bd||C.borderHi):C.border}`,
+            background:on?(s.bg||"rgba(0,100,200,0.2)"):"rgba(0,15,50,0.5)",
+            color:on?(s.tx||C.accent):C.textMid,
+            fontSize:small?11:13,fontWeight:700,cursor:"pointer",transition:"all .18s",
+            boxShadow:on?`0 0 10px ${s.bd||C.borderHi}`:"none",
+          }}>
+            {s.ic&&<span style={{marginRight:5}}>{s.ic}</span>}
+            {opt}{on&&<span style={{marginLeft:4,opacity:.7}}>✓</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── REPAIR FORM ──────────────────────────────────────────────────────────────
+function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
+  const [brand,setBrand]       = useState(editOrder?.brand||"");
+  const [model,setModel]       = useState(editOrder?.model||"");
+  const [modelFree,setModelFree]= useState(editOrder?.modelFree||"");
+  const [date,setDate]         = useState(editOrder?.date||today());
+  const [customer,setCustomer] = useState(editOrder?.customer||"");
+  const [note,setNote]         = useState(editOrder?.note||"");
+  const [payments,setPayments] = useState(editOrder?.payments||[]);
+  const [vendors,setVendors]   = useState(editOrder?.vendors||[]);
+  const [items,setItems]       = useState(editOrder?.items||[]);
+  const [photos,setPhotos]     = useState(editOrder?.photos||[]);
+  const [totalPrice,setTotalPrice] = useState(editOrder?.totalRevenue||"");
+  const [custItem,setCustItem] = useState({name:"",cost:""});
+  const [filterCat,setFilterCat]= useState("全部");
+  const [selSeries,setSelSeries] = useState("");
+
+  const brandObj  = catalog.brands.find(b=>b.id===brand);
+  const allSeries = brandObj?.series || (brandObj?.models ? [{name:"全部型號", models:brandObj.models}] : []);
+  const modelList = allSeries.flatMap(s=>s.models);
+  const payMethods= catalog.paymentMethods||DEF.paymentMethods;
+  const vendorList= catalog.vendors||DEF.vendors;
+  const visItems  = filterCat==="全部"?catalog.repairItems:catalog.repairItems.filter(i=>i.cat===filterCat);
+
+  const modelName = (model==="_custom"||model==="__custom")?modelFree:model;
+  const brandName = brandObj?.name||(brand==="_custom"?modelFree:"");
+
+  function togglePay(p)    { setPayments(ps=>ps.includes(p)?ps.filter(x=>x!==p):[...ps,p]); }
+  function toggleVendor(v) { setVendors(vs=>vs.includes(v)?vs.filter(x=>x!==v):[...vs,v]); }
   // 查最新進貨單價：用關鍵字模糊比對
   function getLatestCost(stockItem, itemName) {
     if(!purchases?.length) return null;
@@ -671,23 +1249,31 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
               onFocus={e=>e.target.style.borderColor=C.accent}
               onBlur={e=>e.target.style.borderColor=C.border}
             />
-            {/* 自動建議選項 */}
+            {/* 自動建議選項 — 支援A碼搜尋，自動帶入品牌系列 */}
             {modelFree.length>=1 && (() => {
-              const allModels = (catalog.brands||[]).flatMap(b=>(b.series||[]).flatMap(s=>s.models));
-              const suggestions = allModels.filter(m=>m.toLowerCase().includes(modelFree.toLowerCase()) && m!==modelFree).slice(0,6);
+              const allModelsFull = (catalog.brands||[]).flatMap(b=>
+                (b.series||[]).flatMap(s=>
+                  s.models.map(m=>({model:m,brandId:b.id,brandName:b.name,seriesName:s.name}))
+                )
+              );
+              const q = modelFree.toLowerCase();
+              const suggestions = allModelsFull.filter(x=>x.model.toLowerCase().includes(q)&&x.model!==modelFree).slice(0,8);
               if(!suggestions.length) return null;
               return (
-                <div style={{position:"fixed",left:"5%",right:"5%",zIndex:9999,background:"rgba(5,15,50,0.98)",border:`1.5px solid ${C.accent}`,borderRadius:12,maxHeight:220,overflowY:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 12px 40px rgba(0,0,0,0.7)"}}>
-                  <div style={{padding:"6px 12px",fontSize:10,color:C.textDim,borderBottom:`1px solid rgba(0,100,200,0.15)`,fontWeight:600}}>點選型號快速填入</div>
-                  {suggestions.map(s=>(
-                    <div key={s} onTouchEnd={e=>{e.preventDefault();setModelFree(s);setModel(s);}} onClick={()=>{setModelFree(s);setModel(s);}}
-                      style={{padding:"13px 14px",fontSize:14,color:C.text,cursor:"pointer",borderBottom:`1px solid rgba(0,100,200,0.15)`,minHeight:44}}
+                <div style={{position:"fixed",left:"3%",right:"3%",zIndex:9999,background:"rgba(5,15,50,0.98)",border:`1.5px solid ${C.accent}`,borderRadius:12,maxHeight:280,overflowY:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 12px 40px rgba(0,0,0,0.8)"}}>
+                  <div style={{padding:"8px 14px",fontSize:11,color:C.textDim,borderBottom:`1px solid rgba(0,100,200,0.2)`,fontWeight:600}}>👆 點選自動帶入品牌、系列、型號</div>
+                  {suggestions.map((x,i)=>(
+                    <div key={i}
+                      onTouchEnd={e=>{e.preventDefault();setModelFree(x.model);setModel(x.model);setBrand(x.brandId);setSelSeries(x.seriesName);}}
+                      onClick={()=>{setModelFree(x.model);setModel(x.model);setBrand(x.brandId);setSelSeries(x.seriesName);}}
+                      style={{padding:"12px 16px",fontSize:13,color:C.text,cursor:"pointer",borderBottom:`1px solid rgba(0,100,200,0.12)`,minHeight:44}}
                     >
-                      {s.split(new RegExp(`(${modelFree})`, "gi")).map((part,i)=>
-                        part.toLowerCase()===modelFree.toLowerCase()
-                          ? <span key={i} style={{color:C.accent,fontWeight:700}}>{part}</span>
-                          : part
-                      )}
+                      <div style={{fontWeight:600}}>
+                        {x.model.split(new RegExp(`(${modelFree})`, "gi")).map((part,ii)=>
+                          part.toLowerCase()===q ? <span key={ii} style={{color:C.accent,fontWeight:700}}>{part}</span> : part
+                        )}
+                      </div>
+                      <div style={{color:C.textDim,fontSize:11,marginTop:2}}>{x.brandName} · {x.seriesName}</div>
                     </div>
                   ))}
                 </div>
@@ -1146,6 +1732,19 @@ function InventoryPage({stock,catalog,setCatalog}) {
   function updateCats(nc){ sc({...catalog,purchaseCategories:nc}); }
   function tog(k){ setCollapsed(p=>({...p,[k]:!p[k]})); }
 
+  // 預設全部收合
+  useEffect(()=>{
+    const init={};
+    cats.forEach((catObj,ci)=>{
+      init["c_"+catObj.cat]=true;
+      (catObj.brands||[]).forEach((b,bi)=>{
+        init["b_"+catObj.cat+"_"+bi]=true;
+        (b.series||[]).forEach((_,si)=>{ init["s_"+catObj.cat+"_"+bi+"_"+si]=true; });
+      });
+    });
+    setCollapsed(init);
+  },[]);
+
   const lowItems = Object.values(stock).filter(x=>x.totalIn>0&&x.stock<=2);
   const filtered = filterCat==="全部" ? cats : cats.filter(x=>x.cat===filterCat);
 
@@ -1514,9 +2113,44 @@ function ReportsPage({orders,purchases,expenses}) {
   const r1=d1.reduce((a,d)=>a+d.rev,0); const r2=d2.reduce((a,d)=>a+d.rev,0); const p1=d1.reduce((a,d)=>a+d.profit,0);
   const yg=r2>0?(((r1-r2)/r2)*100).toFixed(1):null; const mx=Math.max(...d1.map(d=>d.rev),...d2.map(d=>d.rev),1);
   const tb=(id,l)=><button onClick={()=>setTab(id)} style={{padding:"8px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",background:tab===id?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(255,255,255,0.06)",color:tab===id?"#fff":C.textMid}}>{l}</button>;
+
+  // 累計每日盈虧
+  const dailyPL = useMemo(()=>{
+    const dayMap={};
+    orders.forEach(o=>{
+      if(!o.date)return;
+      const d=o.date.slice(0,10);
+      if(!dayMap[d])dayMap[d]={rev:0,cost:0};
+      dayMap[d].rev+=o.totalRevenue||0;
+      dayMap[d].cost+=o.totalCost||0;
+    });
+    purchases.forEach(p=>{
+      if(!p.date)return;
+      const d=p.date.slice(0,10);
+      if(!dayMap[d])dayMap[d]={rev:0,cost:0};
+      dayMap[d].cost+=p.amount||0;
+    });
+    const days=Object.keys(dayMap).sort();
+    let cumulative=0;
+    return days.map(d=>{
+      const profit=(dayMap[d].rev||0)-(dayMap[d].cost||0);
+      cumulative+=profit;
+      return{date:d,rev:dayMap[d].rev,cost:dayMap[d].cost,profit,cumulative};
+    }).reverse(); // 最新的在前
+  },[orders,purchases]);
+
+  const totalRev=dailyPL.reduce((a,d)=>a+d.rev,0);
+  const totalProfit=dailyPL.reduce((a,d)=>a+d.profit,0);
+
   return (
     <div>
-      <div style={{display:"flex",gap:6,marginBottom:15,flexWrap:"wrap"}}>{tb("annual","📅 年度報表")}{tb("compare","⚖️ 年度比較")}{tb("monthly","🔍 月份跨年")}</div>
+      <div style={{display:"flex",gap:6,marginBottom:15,flexWrap:"wrap"}}>
+        {tb("annual","📅 年度報表")}
+        {tb("compare","⚖️ 年度比較")}
+        {tb("monthly","🔍 月份跨年")}
+        {tb("daily","📈 累計盈虧")}
+      </div>
+
       {tab==="annual"&&(<div>
         <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
           <select value={y1} onChange={e=>setY1(Number(e.target.value))} style={selBase}>{years.map(y=><option key={y} value={y}>{y}年</option>)}</select>
@@ -1524,6 +2158,7 @@ function ReportsPage({orders,purchases,expenses}) {
         </div>
         <Card><H>{y1}年 — 月份報表</H>{d1.map((d,i)=>{const pv=d1[i-1];const g=pv&&pv.rev>0?(((d.rev-pv.rev)/pv.rev)*100).toFixed(1):null;return(<div key={i} style={{padding:"10px 0",borderBottom:`1px solid ${C.border}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={{color:C.textMid,fontSize:13,width:36}}>{MZ[i]}</span><div style={{flex:1,margin:"0 10px",background:"rgba(0,100,200,0.12)",borderRadius:4,height:6,overflow:"hidden"}}><div style={{background:`linear-gradient(90deg,${C.accent2},${C.accent})`,height:"100%",width:`${(d.rev/mx)*100}%`,transition:"width .4s"}}/></div><div style={{display:"flex",gap:8,alignItems:"center"}}>{g&&i>0&&<span style={{color:Number(g)>=0?C.green:C.red,fontSize:11}}>{Number(g)>=0?"+":""}{g}%</span>}<span style={{color:C.accent,fontWeight:700,fontSize:13}}>{fmt(d.rev)}</span></div></div><div style={{display:"flex",justifyContent:"flex-end",gap:12}}><span style={{color:C.textDim,fontSize:11}}>支出 {fmt(d.exp)}</span><span style={{color:d.profit>=0?C.green:C.red,fontSize:11}}>淨利 {d.profit>=0?"+":""}{fmt(d.profit)}</span></div></div>);})}</Card>
       </div>)}
+
       {tab==="compare"&&(<div>
         <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
           <select value={y1} onChange={e=>setY1(Number(e.target.value))} style={selBase}>{years.map(y=><option key={y} value={y}>{y}年</option>)}</select>
@@ -1533,9 +2168,70 @@ function ReportsPage({orders,purchases,expenses}) {
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:13}}><Stat label={`${y1}年`} value={fmt(r1)}/><Stat label={`${y2}年`} value={fmt(r2)} color={C.textMid}/>{yg&&<Stat label="成長率" value={`${Number(yg)>=0?"+":""}${yg}%`} color={Number(yg)>=0?C.green:C.red}/>}</div>
         <Card>{MZ.map((mo,i)=>{const a=d1[i].rev,b=d2[i].rev;const g=b>0?(((a-b)/b)*100).toFixed(1):null;return(<div key={i} style={{display:"flex",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${C.border}`,gap:8}}><span style={{color:C.textMid,fontSize:12,width:32}}>{mo}</span><div style={{flex:1}}><div style={{background:`${C.accent}22`,borderRadius:3,height:5,marginBottom:3,overflow:"hidden"}}><div style={{background:`linear-gradient(90deg,${C.accent2},${C.accent})`,height:"100%",width:`${(a/mx)*100}%`}}/></div><div style={{background:"rgba(80,80,120,0.25)",borderRadius:3,height:5,overflow:"hidden"}}><div style={{background:"rgba(120,130,180,0.6)",height:"100%",width:`${(b/mx)*100}%`}}/></div></div><div style={{textAlign:"right",minWidth:80}}><div style={{color:C.accent,fontSize:12}}>{fmt(a)}</div><div style={{color:C.textMid,fontSize:11}}>{fmt(b)}</div></div>{g&&<span style={{color:Number(g)>=0?C.green:C.red,fontSize:11,minWidth:46}}>{Number(g)>=0?"+":""}{g}%</span>}</div>);})}</Card>
       </div>)}
+
       {tab==="monthly"&&(<div>
         <select value={cm} onChange={e=>setCm(Number(e.target.value))} style={{...selBase,marginBottom:12}}>{MZ.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select>
         <Card><H>{MZ[cm-1]} — 跨年比較</H>{years.map(y=>{const d=getMD(y,cm);return(<div key={y} style={{padding:"10px 0",borderBottom:`1px solid ${C.border}`}}><div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:y===y1?C.accent:C.textMid,fontWeight:y===y1?700:400}}>{y}年 {MZ[cm-1]}</span><span style={{color:y===y1?C.accent:C.textMid,fontWeight:700}}>{fmt(d.rev)}</span></div><div style={{display:"flex",justifyContent:"flex-end",gap:12,marginTop:3}}><span style={{color:C.textDim,fontSize:11}}>支出 {fmt(d.exp)}</span><span style={{color:d.profit>=0?C.green:C.red,fontSize:11}}>淨利 {d.profit>=0?"+":""}{fmt(d.profit)}</span></div></div>);})}</Card>
+      </div>)}
+
+      {tab==="daily"&&(<div>
+        {/* 總覽 */}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+          <Stat label="累計營業額" value={fmt(totalRev)}/>
+          <Stat label="從開業至今淨利" value={fmt(totalProfit)} color={totalProfit>=0?C.green:C.red}/>
+          <Stat label="營業天數" value={`${dailyPL.length} 天`} color={C.textMid}/>
+        </div>
+
+        {/* 總盈虧狀態 */}
+        <Card style={{background:totalProfit>=0?"rgba(0,200,100,0.08)":"rgba(255,40,70,0.08)",border:`1.5px solid ${totalProfit>=0?C.green:C.red}`,marginBottom:12}}>
+          <div style={{textAlign:"center",padding:"8px 0"}}>
+            <div style={{fontSize:28,marginBottom:4}}>{totalProfit>=0?"🎉":"📉"}</div>
+            <div style={{color:C.textMid,fontSize:13,marginBottom:4}}>從開業到現在</div>
+            <div style={{color:totalProfit>=0?C.green:C.red,fontSize:24,fontWeight:900}}>
+              {totalProfit>=0?"盈利 ":"虧損 "}{fmt(Math.abs(totalProfit))}
+            </div>
+          </div>
+        </Card>
+
+        {/* 每日明細 */}
+        <Card>
+          <H>📋 每日盈虧明細</H>
+          {dailyPL.length===0&&<div style={{color:C.textDim,fontSize:12}}>尚無記錄</div>}
+          {/* 表頭 */}
+          {dailyPL.length>0&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:4,padding:"6px 8px",background:"rgba(0,40,100,0.3)",borderRadius:7,marginBottom:6}}>
+              <span style={{color:C.textDim,fontSize:11,fontWeight:700}}>日期</span>
+              <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"right"}}>收入</span>
+              <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"right"}}>支出</span>
+              <span style={{color:C.textDim,fontSize:11,fontWeight:700,textAlign:"right"}}>累計盈虧</span>
+            </div>
+          )}
+          {dailyPL.map((d,i)=>(
+            <div key={d.date} style={{
+              display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:4,
+              padding:"8px 8px",borderRadius:8,marginBottom:3,
+              background:d.profit>=0?"rgba(0,180,100,0.05)":"rgba(255,40,70,0.05)",
+              borderLeft:`3px solid ${d.profit>=0?C.green:C.red}`,
+            }}>
+              <div>
+                <div style={{color:C.text,fontSize:12,fontWeight:600}}>{d.date.slice(5)}</div>
+                <div style={{color:C.textDim,fontSize:10}}>{d.date.slice(0,4)}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{color:C.green,fontSize:12,fontWeight:700}}>{d.rev>0?fmt(d.rev):"-"}</div>
+                <div style={{color:d.profit>=0?C.green:C.red,fontSize:10}}>{d.profit>=0?"+":""}{fmt(d.profit)}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{color:C.orange,fontSize:12}}>{d.cost>0?fmt(d.cost):"-"}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{color:d.cumulative>=0?C.green:C.red,fontSize:13,fontWeight:800}}>
+                  {d.cumulative>=0?"+":""}{fmt(d.cumulative)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </Card>
       </div>)}
     </div>
   );
@@ -1708,7 +2404,12 @@ function AdminPage({catalog,setCatalog,isBoss}) {
   const [pinErr,setPinErr]     = useState(false);
   const [tab,setTab]           = useState("brands");
   const [nb,setNb]=useState(""); const [sb,setSb]=useState(""); const [nm,setNm]=useState("");
-  const [newSeriesName, setNewSeriesName] = useState({});  // {brandId: "text"}
+  const [newSeriesName, setNewSeriesName] = useState(()=>{
+    // 預設所有品牌收合
+    const init={};
+    (catalog.brands||[]).forEach(b=>{ init["brand_col_"+b.id]=true; });
+    return init;
+  });
   const [ni,setNi]=useState({name:"",cat:RCATS[0],defaultCost:"",defaultPrice:"",stockItem:""});
   const [nv,setNv]=useState(""); const [np,setNp]=useState(""); const [npi,setNpi]=useState(""); const [net,setNet]=useState("");
 
@@ -2201,7 +2902,17 @@ function App() {
         fixedCats = rawCats;
       }
 
+      // 同步 repairItems 的 stockItem（確保跟 DEF 一致）
+      const rawRepairItems = raw.repairItems || DEF.repairItems;
+      const fixedRepairItems = rawRepairItems.map(ri => {
+        const defItem = DEF.repairItems.find(d => d.id === ri.id);
+        // 如果 DEF 有 stockItem 但 Firebase 沒有，補上去
+        if(defItem?.stockItem && !ri.stockItem) return {...ri, stockItem: defItem.stockItem};
+        return ri;
+      });
+
       return {...DEF,...raw,
+        repairItems: fixedRepairItems,
         brands: fixedBrands,
         paymentMethods:raw.paymentMethods||DEF.paymentMethods,
         vendors:raw.vendors?.length?raw.vendors:DEF.vendors,
