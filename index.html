@@ -565,22 +565,35 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
 
   function togglePay(p)    { setPayments(ps=>ps.includes(p)?ps.filter(x=>x!==p):[...ps,p]); }
   function toggleVendor(v) { setVendors(vs=>vs.includes(v)?vs.filter(x=>x!==v):[...vs,v]); }
-  // 查最新進貨單價
-  function getLatestCost(stockItem) {
-    if(!stockItem||!purchases?.length) return null;
+  // 查最新進貨單價：用維修項目名稱 或 stockItem 去比對進貨記錄
+  function getLatestCost(stockItem, itemName) {
+    if(!purchases?.length) return null;
     const cur = modelName;
-    const all = purchases.filter(p=>p.itemCat===stockItem&&p.amount&&p.qty)
+
+    // 先用維修項目名稱完全比對進貨品項名稱（最精確）
+    const byName = purchases
+      .filter(p => p.itemCat===itemName || p.itemName===itemName || p.vendorName?.includes(itemName) || (p.itemCat&&itemName&&p.itemCat.includes(itemName)))
       .sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-    const exact = all.find(p=>p.itemVariant===cur);
-    const p = exact || all[0];
-    if(!p) return null;
+
+    // 再用 stockItem 大類比對
+    const byCat = purchases
+      .filter(p => stockItem && (p.itemCat===stockItem || p.itemName===stockItem))
+      .sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+
+    // 優先用名稱比對，找型號符合的，再找最新的
+    const pool = byName.length ? byName : byCat;
+    if(!pool.length) return null;
+
+    const exact = pool.find(p=>p.itemVariant===cur);
+    const p = exact || pool[0];
+    if(!p?.amount || !p?.qty) return null;
     return Math.round(Number(p.amount)/(Number(p.qty)||1));
   }
 
   function toggleItem(ri) {
     const ex=items.find(i=>i.id===ri.id);
     if(ex){ setItems(items.filter(i=>i.id!==ri.id)); return; }
-    const latestCost=getLatestCost(ri.stockItem);
+    const latestCost = getLatestCost(ri.stockItem, ri.name);
     const cost=latestCost!==null?latestCost:ri.defaultCost;
     setItems([...items,{id:ri.id,name:ri.name,cat:ri.cat,stockItem:ri.stockItem||"",cost,qty:1,autoPrice:latestCost!==null}]);
   }
