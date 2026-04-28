@@ -104,11 +104,10 @@ const today= () => new Date().toISOString().slice(0,10);
 const nowYM= () => { const d=new Date(); return {y:d.getFullYear(),m:d.getMonth()+1}; };
 const MZ   = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 // ─── CUSTOM DATE PICKER (全數字，無英文) ──────────────────────────────────────
-// ── DatePicker: 完全自製，iOS 100% 相容 ──────────────────────────────────────
+// ── DatePicker: 下拉選單式 ──────────────────────────────────────────────────
 function DatePicker({value, onChange, label}) {
   const parts = value ? value.split("-") : ["","",""];
   const y = parts[0]||""; const m = parts[1]||""; const d = parts[2]||"";
-  const [picking, setPicking] = useState(null); // "y" | "m" | "d" | null
 
   const thisY = new Date().getFullYear();
   const years  = Array.from({length: thisY+2-2025+1}, (_,i)=>2025+i);
@@ -116,85 +115,34 @@ function DatePicker({value, onChange, label}) {
   const daysInMonth = (y&&m) ? new Date(Number(y),Number(m),0).getDate() : 31;
   const days = Array.from({length:daysInMonth}, (_,i)=>i+1);
 
-  function pick(field, val) {
+  function update(field, val) {
     const ny = field==="y"?val:y;
     const nm = field==="m"?String(val).padStart(2,"0"):m;
     const nd = field==="d"?String(val).padStart(2,"0"):d;
     if(ny&&nm&&nd) onChange(`${ny}-${nm}-${nd}`);
-    setPicking(null);
   }
-
-  const displayY = y || "年";
-  const displayM = m ? `${Number(m)}月` : "月";
-  const displayD = d ? `${Number(d)}日` : "日";
-
-  const BtnSt = (active) => ({
-    background: active ? `linear-gradient(135deg,${C.accent2},${C.accent})` : "rgba(0,30,90,0.6)",
-    border: `1.5px solid ${active ? C.accent : C.border}`,
-    borderRadius:8, color: active ? "#fff" : C.text,
-    padding:"10px 0", fontSize:15, fontWeight:700,
-    cursor:"pointer", fontFamily:"inherit",
-    boxShadow: active ? `0 0 12px ${C.accent}55` : "none",
-    flex:1, textAlign:"center",
-  });
 
   return (
     <div style={{marginBottom:10}}>
       {label&&<div style={{color:C.textDim,fontSize:11,fontWeight:600,letterSpacing:.7,textTransform:"uppercase",marginBottom:5}}>{label}</div>}
-
-      {/* 三個顯示按鈕 */}
-      <div style={{display:"flex",gap:6,marginBottom:6}}>
-        <button style={BtnSt(picking==="y")} onClick={()=>setPicking(p=>p==="y"?null:"y")}>{displayY}</button>
-        <button style={BtnSt(picking==="m")} onClick={()=>setPicking(p=>p==="m"?null:"m")}>{displayM}</button>
-        <button style={BtnSt(picking==="d")} onClick={()=>setPicking(p=>p==="d"?null:"d")}>{displayD}</button>
+      <div style={{display:"flex",gap:6}}>
+        <select value={y} onChange={e=>update("y",e.target.value)} style={{...selBase,flex:1,textAlign:"center",fontSize:14,fontWeight:700}}>
+          <option value="">年</option>
+          {years.map(yr=><option key={yr} value={yr}>{yr}年</option>)}
+        </select>
+        <select value={m} onChange={e=>update("m",e.target.value)} style={{...selBase,flex:1,textAlign:"center",fontSize:14,fontWeight:700}}>
+          <option value="">月</option>
+          {months.map(mo=><option key={mo} value={String(mo).padStart(2,"0")}>{mo}月</option>)}
+        </select>
+        <select value={d} onChange={e=>update("d",e.target.value)} style={{...selBase,flex:1,textAlign:"center",fontSize:14,fontWeight:700}}>
+          <option value="">日</option>
+          {days.map(dd=><option key={dd} value={String(dd).padStart(2,"0")}>{dd}日</option>)}
+        </select>
       </div>
-
-      {/* 年選擇 */}
-      {picking==="y"&&(
-        <div style={{background:"rgba(0,15,50,0.97)",border:`1.5px solid ${C.accent}`,borderRadius:12,padding:10,display:"flex",gap:8,flexWrap:"wrap",marginBottom:6}}>
-          {years.map(yr=>(
-            <button key={yr} onClick={()=>pick("y",yr)} style={{
-              padding:"10px 16px",borderRadius:9,border:"none",cursor:"pointer",fontSize:15,fontWeight:700,fontFamily:"inherit",
-              background:String(yr)===String(y)?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(0,40,120,0.5)",
-              color:String(yr)===String(y)?"#fff":C.text,
-            }}>{yr}</button>
-          ))}
-        </div>
-      )}
-
-      {/* 月選擇 - 4x3 格子 */}
-      {picking==="m"&&(
-        <div style={{background:"rgba(0,15,50,0.97)",border:`1.5px solid ${C.accent}`,borderRadius:12,padding:10,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:6}}>
-          {months.map(mo=>(
-            <button key={mo} onClick={()=>pick("m",mo)} style={{
-              padding:"14px 0",borderRadius:9,border:"none",cursor:"pointer",fontSize:16,fontWeight:700,fontFamily:"inherit",
-              background:String(mo)===String(Number(m))?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(0,40,120,0.5)",
-              color:String(mo)===String(Number(m))?"#fff":C.text,
-            }}>{mo}月</button>
-          ))}
-        </div>
-      )}
-
-      {/* 日選擇 - 7列 */}
-      {picking==="d"&&(
-        <div style={{background:"rgba(0,15,50,0.97)",border:`1.5px solid ${C.accent}`,borderRadius:12,padding:10,display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:6}}>
-          {days.map(dy=>(
-            <button key={dy} onClick={()=>pick("d",dy)} style={{
-              padding:"12px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:14,fontWeight:700,fontFamily:"inherit",
-              background:String(dy)===String(Number(d))?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(0,40,120,0.5)",
-              color:String(dy)===String(Number(d))?"#fff":C.text,
-            }}>{dy}</button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
-const ADMIN_PIN   = "0909";  // 後台管理員密碼（老闆才看得到此頁）
-const BOSS_PASS   = "0909";  // 👑 老闆密碼（可進入後台）
-const STAFF_PASS  = "0517";  // 👤 員工密碼（不能進後台）
 
-// ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [pw, setPw]     = useState("");
   const [err, setErr]   = useState(false);
