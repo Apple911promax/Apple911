@@ -492,23 +492,50 @@ const Tag = ({children,color}) => <span style={{background:`${color||C.accent}22
 function useStock(purchases, orders, catalog) {
   return useMemo(() => {
     const cats = Array.isArray(catalog.purchaseCategories) ? catalog.purchaseCategories : DEF.purchaseCategories;
-    const result = {}; // key = "cat__brand__model"
+    const result = {}; // key = stockId or "cat__brand__model"
 
+    // Build stock entries with IDs
     cats.forEach(({cat, brands=[]}) => {
       brands.forEach(({brand, series=[]}) => {
-        series.forEach(({models=[]}) => {
+        series.forEach(({name:serName, models=[], stockIds={}}) => {
           models.forEach(model => {
-            const key = cat + "__" + brand + "__" + model;
+            // stockId: use custom ID if set, otherwise generate from key
+            const defaultKey = cat + "__" + brand + "__" + model;
+            const stockId = (stockIds && stockIds[model]) ? stockIds[model] : defaultKey;
             const totalIn = purchases
               .filter(p => p.itemCat===cat && p.itemBrand===brand && p.itemVariant===model)
               .reduce((a,p) => a+(Number(p.qty)||1), 0);
-            result[key] = { cat, brand, model, totalIn, totalUsed:0, stock:totalIn };
+            // Count usage from orders via stockId matching
+            const totalUsed = orders.reduce((a,o)=>{
+              const used = (o.items||[]).filter(i=>i.stockId===stockId).reduce((s,i)=>s+(Number(i.qty)||1),0);
+              return a+used;
+            },0);
+            if(!result[stockId]) {
+              result[stockId] = { stockId, cat, brand, serName, model, totalIn, totalUsed, stock:totalIn-totalUsed, aliases:[] };
+            } else {
+              // Multiple models share same stockId (通用型號)
+              result[stockId].totalIn += totalIn;
+              result[stockId].stock = result[stockId].totalIn - result[stockId].totalUsed;
+              result[stockId].aliases.push(model);
+            }
+            // Also keep the default key for lookup
+            if(stockId !== defaultKey) result[defaultKey] = result[stockId];
           });
         });
       });
     });
     return result;
   }, [purchases, orders, catalog]);
+}
+
+// Helper: get stockId for a catalog model
+function getStockId(catalog, cat, brand, model) {
+  const cats = Array.isArray(catalog.purchaseCategories) ? catalog.purchaseCategories : [];
+  const catObj = cats.find(c=>c.cat===cat);
+  const brandObj = catObj?.brands?.find(b=>b.brand===brand);
+  const serObj = brandObj?.series?.find(s=>s.models?.includes(model));
+  const stockIds = serObj?.stockIds || {};
+  return stockIds[model] || (cat+"__"+brand+"__"+model);
 }
 
 // ─── CHIPS (multi-select) ─────────────────────────────────────────────────────
@@ -656,7 +683,9 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
     if(ex){ setItems(items.filter(i=>i.id!==ri.id)); return; }
     const latestCost = getLatestCost(ri.stockItem, ri.name);
     const cost=latestCost!==null?latestCost:ri.defaultCost;
-    setItems([...items,{id:ri.id,name:ri.name,cat:ri.cat,stockItem:ri.stockItem||"",cost,qty:1,autoPrice:latestCost!==null}]);
+    // stockId: use repair item's stockId, or derive from stockItem+model
+    const stockId = ri.stockId || (ri.stockItem ? ri.stockItem+"__"+modelName : "");
+    setItems([...items,{id:ri.id,name:ri.name,cat:ri.cat,stockItem:ri.stockItem||"",stockId,cost,qty:1,autoPrice:latestCost!==null}]);
   }
   function setField(id,f,v){ setItems(items.map(i=>i.id===id?{...i,[f]:f==="qty"?Math.max(1,Number(v)||1):v===""?"":Number(v)||0}:i)); }
   function addCustom(){
@@ -1472,23 +1501,60 @@ function InvBrandEditor({bObj,bi,catObj,ci,cats,updateCats,stock,tog,collapsed})
 function InvSeriesEditor({sObj,si,bObj,bi,catObj,ci,cats,updateCats,tog,collapsed}) {
   const k="ms_"+catObj.cat+"_"+bi+"_"+si;
   const isCol=!!collapsed[k];
+  const [showIds,setShowIds]=useState(false);
+  const stockIds = sObj.stockIds||{};
+
+  function setStockId(model,id){
+    const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(bObj.series||[])];
+    const newIds={...stockIds};
+    if(id.trim()) newIds[model]=id.trim();
+    else delete newIds[model];
+    ns[si]={...sObj,stockIds:newIds};nb[bi]={...bObj,series:ns};nc[ci]={...catObj,brands:nb};
+    updateCats(nc);
+  }
+
   return(
     <div style={{width:"100%"}} onClick={e=>e.stopPropagation()}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:isCol?0:6}}>
         <EditableText value={sObj.name} onSave={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(bObj.series||[])];ns[si]={...sObj,name:v};nb[bi]={...bObj,series:ns};nc[ci]={...catObj,brands:nb};updateCats(nc);}}/>
         <span style={{color:C.textDim,fontSize:11,flexShrink:0}}>{sObj.models.length} 型號</span>
+        <button onClick={()=>setShowIds(s=>!s)} style={{background:showIds?"rgba(0,100,255,0.2)":"rgba(255,255,255,0.05)",border:`1px solid ${showIds?C.accent:C.border}`,borderRadius:6,color:showIds?C.accent:C.textDim,cursor:"pointer",fontSize:10,fontWeight:700,padding:"2px 7px",fontFamily:"inherit",flexShrink:0}}>🔗 通用</button>
         <button onClick={()=>{if(!confirm(`刪除系列「${sObj.name}」？`))return;const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...bObj,series:(bObj.series||[]).filter((_,i)=>i!==si)};nc[ci]={...catObj,brands:nb};updateCats(nc);}} style={{background:"rgba(255,50,80,0.15)",border:`1px solid rgba(255,60,90,0.4)`,borderRadius:7,color:"#ff3d5a",cursor:"pointer",fontSize:11,fontWeight:700,padding:"2px 8px",fontFamily:"inherit",flexShrink:0}}>刪</button>
         <span onClick={()=>tog(k)} style={{color:C.textMid,fontSize:13,transform:isCol?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 4px",flexShrink:0}}>⌃</span>
       </div>
       {!isCol&&(
         <div style={{paddingLeft:8}}>
+          {/* 通用ID設定說明 */}
+          {showIds&&(
+            <div style={{background:"rgba(0,60,140,0.2)",border:`1px solid ${C.borderHi}`,borderRadius:8,padding:"8px 10px",marginBottom:8,fontSize:11,color:C.textDim}}>
+              🔗 <b style={{color:C.accent}}>通用型號設定</b>：相同ID的型號共用同一個庫存。<br/>
+              例如「14Pro/15/16通用」→ iPhone 14 Pro、15、16 都填相同ID
+            </div>
+          )}
           <InvAddRow placeholder="新增型號" onAdd={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(bObj.series||[])];ns[si]={...sObj,models:[...sObj.models,v]};nb[bi]={...bObj,series:ns};nc[ci]={...catObj,brands:nb};updateCats(nc);}}/>
-          <SortableList
-            items={sObj.models}
-            onReorder={arr=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(bObj.series||[])];ns[si]={...sObj,models:arr};nb[bi]={...bObj,series:ns};nc[ci]={...catObj,brands:nb};updateCats(nc);}}
-            onDelete={(_,mi)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(bObj.series||[])];ns[si]={...sObj,models:sObj.models.filter((_,i)=>i!==mi)};nb[bi]={...bObj,series:ns};nc[ci]={...catObj,brands:nb};updateCats(nc);}}
-            onEdit={(_,mi,v)=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(bObj.series||[])];const nm=[...sObj.models];nm[mi]=v;ns[si]={...sObj,models:nm};nb[bi]={...bObj,series:ns};nc[ci]={...catObj,brands:nb};updateCats(nc);}}
-          />
+          {/* 型號列表 + 通用ID */}
+          {sObj.models.map((model,mi)=>(
+            <div key={model} style={{marginBottom:4}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(0,30,80,0.4)",borderRadius:8,padding:"7px 10px"}}>
+                <span style={{flex:1,color:C.text,fontSize:13}}>{model}</span>
+                {stockIds[model]&&<span style={{color:C.gold,fontSize:10,background:"rgba(255,200,0,0.1)",border:"1px solid rgba(255,200,0,0.3)",borderRadius:5,padding:"1px 6px"}}>🔗{stockIds[model]}</span>}
+                <button onClick={()=>{const nm=prompt("編輯型號名稱",model);if(nm&&nm.trim()!==model){const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(bObj.series||[])];const arr=[...sObj.models];arr[mi]=nm.trim();ns[si]={...sObj,models:arr};nb[bi]={...bObj,series:ns};nc[ci]={...catObj,brands:nb};updateCats(nc);}}} style={{background:"none",border:"none",color:C.textDim,cursor:"pointer",fontSize:13,padding:"2px 4px"}}>✏️</button>
+                <button onClick={()=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(bObj.series||[])];ns[si]={...sObj,models:sObj.models.filter((_,i)=>i!==mi)};nb[bi]={...bObj,series:ns};nc[ci]={...catObj,brands:nb};updateCats(nc);}} style={{background:"rgba(255,50,80,0.15)",border:`1px solid rgba(255,60,90,0.4)`,borderRadius:6,color:"#ff3d5a",cursor:"pointer",fontSize:12,fontWeight:700,padding:"2px 7px",fontFamily:"inherit"}}>✕</button>
+              </div>
+              {/* 通用ID輸入 */}
+              {showIds&&(
+                <div style={{display:"flex",gap:6,padding:"4px 10px 4px 20px",alignItems:"center"}}>
+                  <span style={{color:C.textDim,fontSize:11,flexShrink:0}}>庫存ID:</span>
+                  <input
+                    defaultValue={stockIds[model]||""}
+                    onBlur={e=>setStockId(model,e.target.value)}
+                    placeholder={`預設: ${catObj.cat}__${bObj.brand}__${model}`}
+                    style={{flex:1,background:"rgba(0,20,60,0.5)",border:`1px solid ${C.border}`,borderRadius:6,color:C.gold,padding:"4px 8px",fontSize:11,outline:"none",fontFamily:"inherit"}}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -2113,9 +2179,17 @@ function AdminPage({catalog,setCatalog,isBoss}) {
             <option value="">不關聯庫存</option>
             {(Array.isArray(catalog.purchaseCategories)?catalog.purchaseCategories:DEF.purchaseCategories).map(x=><option key={x.cat} value={x.cat}>{x.cat}</option>)}
           </Sel>
-                    <Btn onClick={()=>{if(!ni.name)return;sc({...catalog,repairItems:[...catalog.repairItems,{...ni,id:"ci_"+uid(),defaultCost:Number(ni.defaultCost)||0,defaultPrice:Number(ni.defaultPrice)||0}]});setNi({name:"",cat:RCATS[0],defaultCost:"",defaultPrice:"",stockItem:""});}}>新增項目</Btn>
+          {/* 庫存ID連結 - 用於通用型號 */}
+          <div style={{marginBottom:10}}>
+            <div style={{color:C.textDim,fontSize:11,fontWeight:600,marginBottom:4}}>🔗 連結庫存ID（通用型號用）</div>
+            <div style={{color:C.textDim,fontSize:10,marginBottom:6}}>填入庫存裡設定的通用ID，讓多個維修項目共用同一個庫存數量</div>
+            <input value={ni.stockId||""} onChange={e=>setNi(i=>({...i,stockId:e.target.value}))}
+              placeholder="例如：保護貼__iPhone__14Pro/15/16通用"
+              style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${ni.stockId?C.gold:C.border}`,borderRadius:8,color:C.gold,padding:"8px 12px",fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+          </div>
+          <Btn onClick={()=>{if(!ni.name)return;sc({...catalog,repairItems:[...catalog.repairItems,{...ni,id:"ci_"+uid(),defaultCost:Number(ni.defaultCost)||0,defaultPrice:Number(ni.defaultPrice)||0}]});setNi({name:"",cat:RCATS[0],defaultCost:"",defaultPrice:"",stockItem:"",stockId:""});}}>新增項目</Btn>
         </Card>
-        {RCATS.map(cat=>{const its=catalog.repairItems.filter(i=>i.cat===cat);if(!its.length)return null;return(<Card key={cat}><div style={{color:C.accent,fontWeight:700,marginBottom:8,fontSize:13}}>{cat}</div>{its.map(i=>(<div key={i.id} style={rowSt}><div><span style={{color:C.text,fontSize:13}}>{i.name}</span>{i.stockItem&&<span style={{color:C.textDim,fontSize:10,marginLeft:6}}>庫存:{i.stockItem}</span>}</div><Btn v="danger" sm onClick={()=>sc({...catalog,repairItems:catalog.repairItems.filter(x=>x.id!==i.id)})}>刪</Btn></div>))}</Card>);})}
+        {RCATS.map(cat=>{const its=catalog.repairItems.filter(i=>i.cat===cat);if(!its.length)return null;return(<Card key={cat}><div style={{color:C.accent,fontWeight:700,marginBottom:8,fontSize:13}}>{cat}</div>{its.map(i=>(<div key={i.id} style={rowSt}><div><span style={{color:C.text,fontSize:13}}>{i.name}</span>{i.stockItem&&<span style={{color:C.textDim,fontSize:10,marginLeft:6}}>庫存:{i.stockItem}</span>}{i.stockId&&<span style={{color:C.gold,fontSize:10,marginLeft:6}}>🔗{i.stockId}</span>}</div><Btn v="danger" sm onClick={()=>sc({...catalog,repairItems:catalog.repairItems.filter(x=>x.id!==i.id)})}>刪</Btn></div>))}</Card>);})}
       </div>)}
 
       {tab==="vendors"&&(<div>
