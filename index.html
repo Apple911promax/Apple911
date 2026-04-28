@@ -924,7 +924,7 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
   const [fm,setFm]      = useState(nowYM().m);
   const [fd,setFd]      = useState("全部"); // 日期篩選
   const [q,setQ]        = useState("");
-  const years = [nowYM().y,nowYM().y-1,nowYM().y-2,nowYM().y-3];
+  const years = Array.from({length:nowYM().y-2025+2},(_,i)=>nowYM().y+1-i).filter(y=>y>=2025);
 
   function saveOrder(o){
     const next=edit?orders.map(x=>x.id===o.id?o:x):[...orders,o];
@@ -1111,7 +1111,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
       </Card>
 
       <div style={{display:"flex",gap:8,marginBottom:12}}>
-        <select value={fy} onChange={e=>setFy(Number(e.target.value))} style={selBase}>{[nowYM().y,nowYM().y-1,nowYM().y-2].map(y=><option key={y} value={y}>{y}年</option>)}</select>
+        <select value={fy} onChange={e=>setFy(Number(e.target.value))} style={selBase}>{Array.from({length:nowYM().y-2025+2},(_,i)=>nowYM().y+1-i).filter(y=>y>=2025).map(y=><option key={y} value={y}>{y}年</option>)}</select>
         <select value={fm} onChange={e=>setFm(Number(e.target.value))} style={selBase}>{MZ.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select>
       </div>
 
@@ -1545,7 +1545,7 @@ function ExpensesPage({orders,purchases,expenses,setExpenses,catalog}) {
   const pR=mRev>0?(totPur/mRev)*100:0;
   const cR=mRev>0?(oCost/mRev)*100:0;
   const badge=r=>r<30?{t:"優良",c:C.green,e:"✅"}:r<55?{t:"尚可",c:C.gold,e:"⚠️"}:{t:"欠佳",c:C.red,e:"🚨"};
-  const years=[nowYM().y,nowYM().y-1,nowYM().y-2];
+  const years=Array.from({length:nowYM().y-2025+2},(_,i)=>nowYM().y+1-i).filter(y=>y>=2025);
 
   return (
     <div>
@@ -1620,7 +1620,7 @@ function ExpensesPage({orders,purchases,expenses,setExpenses,catalog}) {
 // ─── REPORTS PAGE ─────────────────────────────────────────────────────────────
 function ReportsPage({orders,purchases,expenses}) {
   const [tab,setTab]=useState("annual"); const [y1,setY1]=useState(nowYM().y); const [y2,setY2]=useState(nowYM().y-1); const [cm,setCm]=useState(nowYM().m);
-  const years=[nowYM().y,nowYM().y-1,nowYM().y-2,nowYM().y-3];
+  const years=Array.from({length:nowYM().y-2025+2},(_,i)=>nowYM().y+1-i).filter(y=>y>=2025);
   function getMD(y,m){const mk=mkey(y,m);const rev=orders.filter(o=>o.date?.slice(0,7)===mk).reduce((a,o)=>a+o.totalRevenue,0);const cost=orders.filter(o=>o.date?.slice(0,7)===mk).reduce((a,o)=>a+o.totalCost,0);const totP=purchases.filter(p=>p.date?.slice(0,7)===mk).reduce((a,p)=>a+p.amount,0);const fx=((expenses[mk]||{}).items||[]).reduce((a,i)=>a+i.amount,0);const exp=cost+totP+fx;return{rev,exp,profit:rev-exp};}
   const d1=useMemo(()=>MZ.map((_,i)=>getMD(y1,i+1)),[y1,orders,purchases,expenses]);
   const d2=useMemo(()=>MZ.map((_,i)=>getMD(y2,i+1)),[y2,orders,purchases,expenses]);
