@@ -562,6 +562,9 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
 
   const modelName = (model==="_custom"||model==="__custom")?modelFree:model;
   const brandName = brandObj?.name||(brand==="_custom"?modelFree:"");
+  // 用 ref 確保 getLatestCost 讀到最新廠商
+  const vendorsRef = React.useRef(vendors);
+  vendorsRef.current = vendors;
 
   function togglePay(p)    { setPayments(ps=>ps.includes(p)?ps.filter(x=>x!==p):[...ps,p]); }
   function toggleVendor(v) { setVendors(vs=>vs.includes(v)?vs.filter(x=>x!==v):[...vs,v]); }
@@ -587,10 +590,10 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
 
     if(!pool.length) return null;
 
-    const vMatch = (p) => vendors?.some(v=>(p.vendorName||"").includes(v)||(v||"").includes(p.vendorName||""));
+    const vMatch = (p) => vendorsRef.current?.some(v=>(p.vendorName||"").includes(v)||(v||"").includes(p.vendorName||""));
 
     // 優先：廠商+型號符合
-    if(vendors?.length) {
+    if(vendorsRef.current?.length) {
       const ve = pool.find(p=>vMatch(p)&&p.itemVariant===cur);
       if(ve) return Math.round(Number(ve.amount)/(Number(ve.qty)||1));
       const va = pool.find(p=>vMatch(p));
