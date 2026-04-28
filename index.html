@@ -858,7 +858,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
 }
 
 // ─── ORDERS PAGE ──────────────────────────────────────────────────────────────
-function OrdersPage({orders,setOrders,catalog,stock}) {
+function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
   const [view,setView]  = useState("list");
   const [edit,setEdit]  = useState(null);
   const [fy,setFy]      = useState(nowYM().y);
@@ -2249,7 +2249,7 @@ function App() {
 
       {/* Content */}
       <div style={{padding:"16px 14px 32px",position:"relative",zIndex:1}}>
-        {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock}/>}
+        {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases}/>}
         {page==="purchases"&&<PurchasesPage purchases={purchases} setPurchases={setPur} catalog={catalog} stock={stock}/>}
         {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}}/>}
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
