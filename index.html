@@ -994,7 +994,7 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
         <select value={fy} onChange={e=>setFy(Number(e.target.value))} style={selBase}>{years.map(y=><option key={y} value={y}>{y}年</option>)}</select>
         <select value={fm} onChange={e=>{setFm(Number(e.target.value));setFd("全部");}} style={selBase}>{MZ.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select>
         <select value={fd} onChange={e=>setFd(e.target.value)} style={selBase}>
-          {daysInMonth.map(d=><option key={d} value={d}>{d==="全部"?"全部日期":d}</option>)}
+          {daysInMonth.map(d=><option key={d} value={d}>{d==="全部"?"全部":d.slice(8)+"日"}</option>)}
         </select>
         <Btn sm onClick={()=>setView("new")}>＋ 新增工單</Btn>
       </div>
