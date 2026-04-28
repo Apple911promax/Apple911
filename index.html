@@ -1213,14 +1213,19 @@ function InventoryPage({stock,catalog,setCatalog}) {
   function updateCats(nc){ sc({...catalog,purchaseCategories:nc}); }
   function tog(k){ setCollapsed(p=>({...p,[k]:!p[k]})); }
 
-  // 預設全部收合
+  // 預設全部收合（一般模式 c_/b_/s_ 和管理模式 mc_/mb_/ms_）
   useEffect(()=>{
     const init={};
     cats.forEach((catObj,ci)=>{
       init["c_"+catObj.cat]=true;
+      init["mc_"+catObj.cat]=true;
       (catObj.brands||[]).forEach((b,bi)=>{
         init["b_"+catObj.cat+"_"+bi]=true;
-        (b.series||[]).forEach((_,si)=>{ init["s_"+catObj.cat+"_"+bi+"_"+si]=true; });
+        init["mb_"+catObj.cat+"_"+bi]=true;
+        (b.series||[]).forEach((_,si)=>{
+          init["s_"+catObj.cat+"_"+bi+"_"+si]=true;
+          init["ms_"+catObj.cat+"_"+bi+"_"+si]=true;
+        });
       });
     });
     setCollapsed(init);
