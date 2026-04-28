@@ -574,13 +574,15 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
     const cur = modelName;
 
     // 從維修項目名稱抽取零件關鍵字（去掉動詞）
-    const cleanName = (itemName||"").replace(/更換|維修|安裝|修復|代工|清洗|升級/g,"").trim();
-    const keywords = [...new Set([stockItem, itemName, cleanName].filter(Boolean))];
+    const cleanName = (itemName||"").replace(/更換|維修|安裝|修復|代工|清洗|升級|整新|校正/g,"").trim();
+    // 建立關鍵字集合（去重、去空）
+    const keywords = [...new Set([stockItem, itemName, cleanName].filter(k=>k&&k.length>0))];
 
+    // 比對函式：進貨品項名稱包含關鍵字，或反過來
     function matches(p) {
       const cat = (p.itemCat||p.itemName||"").toLowerCase();
       return keywords.some(kw => {
-        const k = (kw||"").toLowerCase();
+        const k = kw.toLowerCase();
         return k.length>0 && (cat.includes(k) || k.includes(cat));
       });
     }
@@ -600,6 +602,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
       if(va) return Math.round(Number(va.amount)/(Number(va.qty)||1));
     }
 
+    // 型號符合
     const exact = pool.find(p=>p.itemVariant===cur);
     const p = exact || pool[0];
     return Math.round(Number(p.amount)/(Number(p.qty)||1));
