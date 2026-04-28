@@ -679,6 +679,8 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
       {/* 基本資訊 */}
       <Card hi>
         <H>{editOrder?"✏️ 編輯工單":"🔧 新增維修工單"}</H>
+        <DatePicker label="日期" value={date} onChange={setDate}/>
+        <Input label="客戶姓名 / 電話" value={customer} onChange={e=>setCustomer(e.target.value)} placeholder="選填（姓名 / 電話）"/>
         <Sel label="① 品牌" value={brand} onChange={e=>{setBrand(e.target.value);setModel("");setModelFree("");}}>
           <option value="">選擇品牌（留空亦可）</option>
           {catalog.brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
@@ -748,8 +750,6 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
             })()}
           </div>
         )}
-        <DatePicker label="日期" value={date} onChange={setDate}/>
-        <Input label="客戶姓名 / 電話" value={customer} onChange={e=>setCustomer(e.target.value)} placeholder="選填（姓名 / 電話）"/>
       </Card>
 
       {/* 付款方式 */}
@@ -945,42 +945,89 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
   const [edit,setEdit]  = useState(null);
   const [fy,setFy]      = useState(nowYM().y);
   const [fm,setFm]      = useState(nowYM().m);
+  const [fd,setFd]      = useState("全部"); // 日期篩選
   const [q,setQ]        = useState("");
   const years = [nowYM().y,nowYM().y-1,nowYM().y-2,nowYM().y-3];
 
-  function saveOrder(o){const next=edit?orders.map(x=>x.id===o.id?o:x):[...orders,o];setOrders(next);save(SK.orders,next);setView("list");setEdit(null);}
+  function saveOrder(o){
+    const next=edit?orders.map(x=>x.id===o.id?o:x):[...orders,o];
+    setOrders(next);save(SK.orders,next);setView("list");setEdit(null);
+  }
   function del(id){if(!confirm("確定刪除？"))return;const next=orders.filter(o=>o.id!==id);setOrders(next);save(SK.orders,next);}
 
   const mk=mkey(fy,fm);
+
+  // 取得本月所有日期
+  const daysInMonth = useMemo(()=>{
+    const days=new Set();
+    orders.forEach(o=>{ if(o.date?.slice(0,7)===mk) days.add(o.date.slice(0,10)); });
+    return ["全部",...[...days].sort().reverse()];
+  },[orders,mk]);
+
   const filtered=useMemo(()=>orders.filter(o=>{
     const mok=o.date?.slice(0,7)===mk;
+    const dok=fd==="全部"||o.date?.slice(0,10)===fd;
     const sok=!q||[o.brandName,o.modelName,o.modelFree,o.customer,...(o.items||[]).map(i=>i.name)].join(" ").includes(q);
-    return mok&&sok;
-  }),[orders,mk,q]);
+    return mok&&dok&&sok;
+  }),[orders,mk,fd,q]);
+
   const totalRev=filtered.reduce((a,o)=>a+o.totalRevenue,0);
   const totalProfit=filtered.reduce((a,o)=>a+o.profit,0);
 
-  if(view==="new") return <div><button onClick={()=>setView("list")} style={{color:C.accent,background:"none",border:"none",cursor:"pointer",fontSize:13,marginBottom:12,fontFamily:"inherit"}}>← 返回列表</button><RepairForm catalog={catalog} onSave={saveOrder} onCancel={()=>setView("list")} stock={stock} purchases={purchases}/></div>;
-  if(view==="edit"&&edit) return <div><button onClick={()=>{setView("list");setEdit(null);}} style={{color:C.accent,background:"none",border:"none",cursor:"pointer",fontSize:13,marginBottom:12,fontFamily:"inherit"}}>← 返回列表</button><RepairForm catalog={catalog} onSave={saveOrder} onCancel={()=>{setView("list");setEdit(null);}} editOrder={edit} stock={stock} purchases={purchases}/></div>;
+  if(view==="new") return (
+    <div>
+      <button onClick={()=>setView("list")} style={{color:C.accent,background:"none",border:"none",cursor:"pointer",fontSize:13,marginBottom:12,fontFamily:"inherit"}}>← 返回列表</button>
+      <RepairForm catalog={catalog} onSave={saveOrder} onCancel={()=>setView("list")} stock={stock} purchases={purchases}/>
+    </div>
+  );
+  if(view==="edit"&&edit) return (
+    <div>
+      <button onClick={()=>{setView("list");setEdit(null);}} style={{color:C.accent,background:"none",border:"none",cursor:"pointer",fontSize:13,marginBottom:12,fontFamily:"inherit"}}>← 返回列表</button>
+      <RepairForm catalog={catalog} onSave={saveOrder} onCancel={()=>{setView("list");setEdit(null);}} editOrder={edit} stock={stock} purchases={purchases}/>
+    </div>
+  );
 
   return (
     <div>
-      <div style={{display:"flex",gap:7,marginBottom:13,flexWrap:"wrap"}}>
+      {/* 篩選列 */}
+      <div style={{display:"flex",gap:7,marginBottom:8,flexWrap:"wrap"}}>
         <select value={fy} onChange={e=>setFy(Number(e.target.value))} style={selBase}>{years.map(y=><option key={y} value={y}>{y}年</option>)}</select>
-        <select value={fm} onChange={e=>setFm(Number(e.target.value))} style={selBase}>{MZ.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select>
-        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="搜尋品牌/型號/客戶/項目…" style={{flex:1,minWidth:120,background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 12px",fontSize:13,outline:"none"}}/>
+        <select value={fm} onChange={e=>{setFm(Number(e.target.value));setFd("全部");}} style={selBase}>{MZ.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select>
         <Btn sm onClick={()=>setView("new")}>＋ 新增工單</Btn>
       </div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:13}}>
-        <Stat label="本月筆數" value={filtered.length} icon="📋"/>
-        <Stat label="本月營業額" value={fmt(totalRev)} icon="💰"/>
-        <Stat label="本月利潤" value={fmt(totalProfit)} color={totalProfit>=0?C.green:C.red} icon="📈"/>
+
+      {/* 日期快速篩選 */}
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10,overflowX:"auto"}}>
+        {daysInMonth.map(d=>(
+          <button key={d} onClick={()=>setFd(d)} style={{
+            padding:"5px 10px",borderRadius:16,border:"none",cursor:"pointer",flexShrink:0,
+            fontSize:12,fontWeight:600,fontFamily:"inherit",
+            background:fd===d?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(255,255,255,0.07)",
+            color:fd===d?"#fff":C.textMid,
+          }}>{d==="全部"?"全部":d.slice(5)}</button>
+        ))}
       </div>
-      {filtered.length===0&&<Card><div style={{color:C.textDim,textAlign:"center",padding:24}}>本月尚無工單記錄</div></Card>}
-      {[...filtered].sort((a,b)=>b.date?.localeCompare(a.date)).map(o=>(
+
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="搜尋品牌/型號/客戶/項目…" style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",marginBottom:10}}/>
+
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:13}}>
+        <Stat label="筆數" value={filtered.length} icon="📋"/>
+        <Stat label="營業額" value={fmt(totalRev)} icon="💰"/>
+        <Stat label="利潤" value={fmt(totalProfit)} color={totalProfit>=0?C.green:C.red} icon="📈"/>
+      </div>
+
+      {filtered.length===0&&<Card><div style={{color:C.textDim,textAlign:"center",padding:24}}>尚無工單記錄</div></Card>}
+      {[...filtered].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(o=>(
         <Card key={o.id} style={{marginBottom:10}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
             <div style={{flex:1,minWidth:0}}>
+              {/* 日期排第一 */}
+              <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
+                <span style={{color:C.accent,fontSize:13,fontWeight:700}}>📅 {o.date}</span>
+                <span style={{color:C.accent,fontSize:13,fontWeight:700}}>{fmt(o.totalRevenue)}</span>
+                <span style={{color:o.profit>=0?C.green:C.red,fontSize:12,fontWeight:700}}>利潤 {o.profit>=0?"+":""}{fmt(o.profit)}</span>
+              </div>
+              {/* 品牌型號 */}
               <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:5}}>
                 <span style={{color:C.text,fontWeight:800,fontSize:14}}>{o.brandName||""} {o.modelName||o.modelFree||"（無型號）"}</span>
                 {o.customer&&<Tag color={C.textMid}>{o.customer}</Tag>}
@@ -988,11 +1035,6 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
               <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:5}}>{o.items?.map(i=><Tag key={i.id} color={C.accent}>{i.name}</Tag>)}</div>
               {o.payments?.length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:5}}>{o.payments.map(p=>{const ps=PAY_STYLE[p]||{bd:C.border,bg:"rgba(0,40,100,0.3)",tx:C.textMid,ic:"💰"};return<span key={p} style={{background:ps.bg,border:`1px solid ${ps.bd}`,color:ps.tx,borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{ps.ic} {p}</span>;})}</div>}
               {o.vendors?.length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:5}}>{o.vendors.map(v=><Tag key={v} color={C.orange}>{v}</Tag>)}</div>}
-              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-                <span style={{color:C.textDim,fontSize:11}}>📅 {o.date}</span>
-                <span style={{color:C.accent,fontSize:12,fontWeight:700}}>{fmt(o.totalRevenue)}</span>
-                <span style={{color:o.profit>=0?C.green:C.red,fontSize:12,fontWeight:700}}>利潤 {o.profit>=0?"+":""}{fmt(o.profit)}</span>
-              </div>
               {o.note&&<div style={{color:C.textDim,fontSize:11,marginTop:6,background:"rgba(0,18,55,0.5)",borderRadius:8,padding:"7px 11px",borderLeft:`2px solid ${C.borderHi}`,whiteSpace:"pre-wrap",lineHeight:1.6}}>{o.note.length>120?o.note.slice(0,120)+"…":o.note}</div>}
               {o.photos?.length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:6}}>{o.photos.slice(0,3).map(p=><img key={p.id} src={p.src} alt="" style={{width:52,height:52,objectFit:"cover",borderRadius:7,border:`1px solid ${C.border}`}}/>)}{o.photos.length>3&&<div style={{width:52,height:52,borderRadius:7,background:"rgba(0,40,100,0.4)",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:C.textDim,fontSize:11,fontWeight:700}}>+{o.photos.length-3}</div>}</div>}
             </div>
