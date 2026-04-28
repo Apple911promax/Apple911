@@ -1853,13 +1853,13 @@ function AdminPage({catalog,setCatalog,isBoss}) {
           <H>新增維修/配件項目</H>
           <Input label="項目名稱" value={ni.name} onChange={e=>setNi(i=>({...i,name:e.target.value}))}/>
           <Sel label="類別" value={ni.cat} onChange={e=>setNi(i=>({...i,cat:e.target.value}))}>{RCATS.map(c=><option key={c} value={c}>{c}</option>)}</Sel>
-          <Sel label="對應庫存品項（用於庫存扣減）" value={ni.stockItem||""} onChange={e=>setNi(i=>({...i,stockItem:e.target.value}))}>
+          <Sel label="對應庫存品項（用於自動帶入成本）" value={ni.stockItem||""} onChange={e=>setNi(i=>({...i,stockItem:e.target.value}))}>
             <option value="">不關聯庫存</option>
-            {(catalog.purchaseItems||DEF.purchaseItems).map(it=><option key={it} value={it}>{it}</option>)}
+            {(Array.isArray(catalog.purchaseCategories)?catalog.purchaseCategories:DEF.purchaseCategories).map(x=><option key={x.cat} value={x.cat}>{x.cat}</option>)}
           </Sel>
                     <Btn onClick={()=>{if(!ni.name)return;sc({...catalog,repairItems:[...catalog.repairItems,{...ni,id:"ci_"+uid(),defaultCost:Number(ni.defaultCost)||0,defaultPrice:Number(ni.defaultPrice)||0}]});setNi({name:"",cat:RCATS[0],defaultCost:"",defaultPrice:"",stockItem:""});}}>新增項目</Btn>
         </Card>
-        {RCATS.map(cat=>{const its=catalog.repairItems.filter(i=>i.cat===cat);if(!its.length)return null;return(<Card key={cat}><div style={{color:C.accent,fontWeight:700,marginBottom:8,fontSize:13}}>{cat}</div>{its.map(i=>(<div key={i.id} style={rowSt}><div><span style={{color:C.text,fontSize:13}}>{i.name}</span>{i.stockItem&&<span style={{color:C.textDim,fontSize:10,marginLeft:6}}>庫存:{i.stockItem}</span>}<span style={{color:C.textDim,fontSize:11,marginLeft:8}}>成本{fmt(i.defaultCost)}/售{fmt(i.defaultPrice)}</span></div><Btn v="danger" sm onClick={()=>sc({...catalog,repairItems:catalog.repairItems.filter(x=>x.id!==i.id)})}>刪</Btn></div>))}</Card>);})}
+        {RCATS.map(cat=>{const its=catalog.repairItems.filter(i=>i.cat===cat);if(!its.length)return null;return(<Card key={cat}><div style={{color:C.accent,fontWeight:700,marginBottom:8,fontSize:13}}>{cat}</div>{its.map(i=>(<div key={i.id} style={rowSt}><div><span style={{color:C.text,fontSize:13}}>{i.name}</span>{i.stockItem&&<span style={{color:C.textDim,fontSize:10,marginLeft:6}}>庫存:{i.stockItem}</span>}</div><Btn v="danger" sm onClick={()=>sc({...catalog,repairItems:catalog.repairItems.filter(x=>x.id!==i.id)})}>刪</Btn></div>))}</Card>);})}
       </div>)}
 
       {tab==="vendors"&&(<div>
