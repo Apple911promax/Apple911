@@ -1022,7 +1022,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   const [fy,setFy] = useState(nowYM().y);
   const [fm,setFm] = useState(nowYM().m);
   const [form,setForm] = useState({date:today(),vendor:"",customVendor:"",itemCat:"",itemBrand:"",itemSeries:"",itemVariant:"",_customVariant:"",qty:"1",amount:"",note:""});
-  const [editId,setEditId] = useState(null);
+  const [fd,setFd] = useState("全部");
   const [editForm,setEditForm] = useState(null);
 
   const cats = Array.isArray(catalog.purchaseCategories)?catalog.purchaseCategories:DEF.purchaseCategories;
@@ -1044,7 +1044,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   }
 
   const curMK=mkey(fy,fm);
-  const filtered=purchases.filter(p=>p.date?.slice(0,7)===curMK);
+  const filtered=purchases.filter(p=>p.date?.slice(0,7)===curMK&&(fd==="全部"||p.date?.slice(0,10)===fd));
   const byVendor=filtered.reduce((acc,p)=>{const k=p.vendorName||p.vendor||"未知廠商";if(!acc[k])acc[k]={total:0,rows:[]};acc[k].total+=p.amount;acc[k].rows.push(p);return acc;},{});
   const byItem=filtered.reduce((acc,p)=>{const k=p.itemName||p.item||"未分類";if(!acc[k])acc[k]={total:0,qty:0};acc[k].total+=p.amount;acc[k].qty+=(Number(p.qty)||1);return acc;},{});
   const grandTotal=filtered.reduce((a,p)=>a+p.amount,0);
@@ -1111,8 +1111,12 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
       </Card>
 
       <div style={{display:"flex",gap:8,marginBottom:12}}>
-        <select value={fy} onChange={e=>setFy(Number(e.target.value))} style={selBase}>{Array.from({length:nowYM().y-2025+2},(_,i)=>nowYM().y+1-i).filter(y=>y>=2025).map(y=><option key={y} value={y}>{y}年</option>)}</select>
-        <select value={fm} onChange={e=>setFm(Number(e.target.value))} style={selBase}>{MZ.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select>
+        <select value={fy} onChange={e=>{setFy(Number(e.target.value));setFd("全部");}} style={selBase}>{Array.from({length:nowYM().y-2025+2},(_,i)=>nowYM().y+1-i).filter(y=>y>=2025).map(y=><option key={y} value={y}>{y}年</option>)}</select>
+        <select value={fm} onChange={e=>{setFm(Number(e.target.value));setFd("全部");}} style={selBase}>{MZ.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select>
+        <select value={fd} onChange={e=>setFd(e.target.value)} style={selBase}>
+          <option value="全部">全部</option>
+          {[...new Set(purchases.filter(p=>p.date?.slice(0,7)===curMK).map(p=>p.date?.slice(0,10)).filter(Boolean))].sort().reverse().map(d=><option key={d} value={d}>{d.slice(8)}日</option>)}
+        </select>
       </div>
 
       <Card>
