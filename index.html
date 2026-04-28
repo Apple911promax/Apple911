@@ -565,37 +565,42 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
 
   function togglePay(p)    { setPayments(ps=>ps.includes(p)?ps.filter(x=>x!==p):[...ps,p]); }
   function toggleVendor(v) { setVendors(vs=>vs.includes(v)?vs.filter(x=>x!==v):[...vs,v]); }
-  // 查最新進貨單價：優先符合已選廠商，再用項目名稱/品項比對
+  // 查最新進貨單價：用關鍵字模糊比對
   function getLatestCost(stockItem, itemName) {
     if(!purchases?.length) return null;
     const cur = modelName;
 
-    // 所有可能符合的進貨記錄（用名稱或stockItem比對）
-    const pool = purchases.filter(p => {
-      const nameMatch = p.itemCat===itemName || p.itemName===itemName ||
-        (p.itemCat&&itemName&&p.itemCat.includes(itemName));
-      const catMatch = stockItem && (p.itemCat===stockItem || p.itemName===stockItem);
-      return (nameMatch || catMatch) && p.amount && p.qty;
-    }).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+    // 比對函式：進貨品項名稱包含關鍵字，或關鍵字包含在進貨品項名稱裡
+    function matches(p, keyword) {
+      if(!keyword) return false;
+      const cat = (p.itemCat||p.itemName||"").toLowerCase();
+      const kw = keyword.toLowerCase();
+      return cat.includes(kw) || kw.includes(cat);
+    }
+
+    // 收集所有可能符合的記錄
+    const pool = purchases.filter(p =>
+      (matches(p, itemName) || matches(p, stockItem)) && p.amount && p.qty
+    ).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
 
     if(!pool.length) return null;
 
-    // 優先找：廠商符合 + 型號符合
+    // 優先：廠商符合 + 型號符合
     if(vendors?.length) {
       const vendorExact = pool.find(p=>
-        vendors.some(v=>p.vendorName?.includes(v)||v?.includes(p.vendorName||"")) &&
+        vendors.some(v=>(p.vendorName||"").includes(v)||(v||"").includes(p.vendorName||"")) &&
         p.itemVariant===cur
       );
       if(vendorExact) return Math.round(Number(vendorExact.amount)/(Number(vendorExact.qty)||1));
 
       // 廠商符合（不限型號）
       const vendorAny = pool.find(p=>
-        vendors.some(v=>p.vendorName?.includes(v)||v?.includes(p.vendorName||""))
+        vendors.some(v=>(p.vendorName||"").includes(v)||(v||"").includes(p.vendorName||""))
       );
       if(vendorAny) return Math.round(Number(vendorAny.amount)/(Number(vendorAny.qty)||1));
     }
 
-    // 找型號符合的最新記錄
+    // 型號符合
     const exact = pool.find(p=>p.itemVariant===cur);
     const p = exact || pool[0];
     return Math.round(Number(p.amount)/(Number(p.qty)||1));
@@ -953,22 +958,32 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
 function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   const [fy,setFy] = useState(nowYM().y);
   const [fm,setFm] = useState(nowYM().m);
-  const [form,setForm] = useState({date:today(),vendor:"",customVendor:"",itemCat:"",itemBrand:"",itemSeries:"",itemVariant:"",qty:"1",amount:"",note:""});
-  const purchaseItems = catalog.purchaseItems||DEF.purchaseItems;
+  const [form,setForm] = useState({date:today(),vendor:"",customVendor:"",itemCat:"",itemBrand:"",itemSeries:"",itemVariant:"",_customVariant:"",qty:"1",amount:"",note:""});
+  const [editId,setEditId] = useState(null);
+  const [editForm,setEditForm] = useState(null);
+
+  const cats = Array.isArray(catalog.purchaseCategories)?catalog.purchaseCategories:DEF.purchaseCategories;
 
   function add(){
     if(!form.amount||!form.itemCat)return;
     const vendorName=form.vendor==="_custom"?form.customVendor:form.vendor;
-    const rec={...form,id:uid(),amount:Number(form.amount),qty:Number(form.qty)||1,vendorName,itemName:form.itemCat};
+    const itemVariant=form.itemVariant==="__custom"?form._customVariant:form.itemVariant;
+    const rec={...form,id:uid(),amount:Number(form.amount),qty:Number(form.qty)||1,vendorName,itemName:form.itemCat,itemVariant};
     const next=[...purchases,rec]; setPurchases(next); save(SK.purchases,next);
-    setForm(f=>({...f,vendor:"",customVendor:"",itemCat:"",itemBrand:"",itemSeries:"",itemVariant:"",qty:"1",amount:"",note:""}));
+    setForm(f=>({...f,vendor:"",customVendor:"",itemCat:"",itemBrand:"",itemSeries:"",itemVariant:"",_customVariant:"",qty:"1",amount:"",note:""}));
   }
-  function del(id){const next=purchases.filter(p=>p.id!==id);setPurchases(next);save(SK.purchases,next);}
+  function del(id){if(!confirm("確定刪除？"))return;const next=purchases.filter(p=>p.id!==id);setPurchases(next);save(SK.purchases,next);}
+  function startEdit(p){setEditId(p.id);setEditForm({...p,amount:String(p.amount),qty:String(p.qty||1)});}
+  function saveEdit(){
+    if(!editForm?.amount)return;
+    const next=purchases.map(p=>p.id===editId?{...editForm,amount:Number(editForm.amount),qty:Number(editForm.qty)||1}:p);
+    setPurchases(next);save(SK.purchases,next);setEditId(null);setEditForm(null);
+  }
 
   const curMK=mkey(fy,fm);
   const filtered=purchases.filter(p=>p.date?.slice(0,7)===curMK);
   const byVendor=filtered.reduce((acc,p)=>{const k=p.vendorName||p.vendor||"未知廠商";if(!acc[k])acc[k]={total:0,rows:[]};acc[k].total+=p.amount;acc[k].rows.push(p);return acc;},{});
-  const byItem=filtered.reduce((acc,p)=>{const k=p.itemName||p.item||"未分類";acc[k]=(acc[k]||0)+p.amount;return acc;},{});
+  const byItem=filtered.reduce((acc,p)=>{const k=p.itemName||p.item||"未分類";if(!acc[k])acc[k]={total:0,qty:0};acc[k].total+=p.amount;acc[k].qty+=(Number(p.qty)||1);return acc;},{});
   const grandTotal=filtered.reduce((a,p)=>a+p.amount,0);
 
   return (
@@ -976,7 +991,6 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
       <Card hi>
         <H>新增進貨記錄</H>
         <DatePicker label="日期" value={form.date} onChange={v=>setForm(f=>({...f,date:v}))}/>
-
         <Sel label="廠商" value={form.vendor} onChange={e=>setForm(f=>({...f,vendor:e.target.value}))}>
           <option value="">選擇廠商</option>
           {(catalog.vendors||[]).map(v=><option key={v} value={v}>{v}</option>)}
@@ -984,17 +998,12 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
         </Sel>
         {form.vendor==="_custom"&&<Input placeholder="廠商名稱" value={form.customVendor} onChange={e=>setForm(f=>({...f,customVendor:e.target.value}))}/>}
 
-        {/* 品項選擇 4層：品項→品牌→系列→型號 */}
         <Sel label="① 零件品項" value={form.itemCat} onChange={e=>setForm(f=>({...f,itemCat:e.target.value,itemBrand:"",itemSeries:"",itemVariant:""}))}>
           <option value="">選擇品項</option>
-          {(catalog.purchaseCategories||DEF.purchaseCategories).map(({cat})=>(
-            <option key={cat} value={cat}>{cat}</option>
-          ))}
+          {cats.map(({cat})=><option key={cat} value={cat}>{cat}</option>)}
         </Sel>
-
-        {/* 品牌 */}
         {form.itemCat&&(()=>{
-          const catObj=(catalog.purchaseCategories||DEF.purchaseCategories).find(x=>x.cat===form.itemCat);
+          const catObj=cats.find(x=>x.cat===form.itemCat);
           const brands=catObj?.brands||[];
           return brands.length>0&&(
             <Sel label="② 品牌" value={form.itemBrand} onChange={e=>setForm(f=>({...f,itemBrand:e.target.value,itemSeries:"",itemVariant:""}))}>
@@ -1003,10 +1012,8 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
             </Sel>
           );
         })()}
-
-        {/* 系列 */}
         {form.itemCat&&form.itemBrand&&(()=>{
-          const catObj=(catalog.purchaseCategories||DEF.purchaseCategories).find(x=>x.cat===form.itemCat);
+          const catObj=cats.find(x=>x.cat===form.itemCat);
           const brandObj=catObj?.brands?.find(b=>b.brand===form.itemBrand);
           const series=brandObj?.series||[];
           return series.length>0&&(
@@ -1016,33 +1023,26 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
             </Sel>
           );
         })()}
-
-        {/* 型號 */}
         {form.itemCat&&form.itemBrand&&form.itemSeries&&(()=>{
-          const catObj=(catalog.purchaseCategories||DEF.purchaseCategories).find(x=>x.cat===form.itemCat);
+          const catObj=cats.find(x=>x.cat===form.itemCat);
           const brandObj=catObj?.brands?.find(b=>b.brand===form.itemBrand);
           const serObj=brandObj?.series?.find(s=>s.name===form.itemSeries);
           const models=serObj?.models||[];
           return(
             <Sel label="④ 型號" value={form.itemVariant} onChange={e=>setForm(f=>({...f,itemVariant:e.target.value}))}>
               <option value="">選擇型號</option>
-              {models.map(m=>{
-                const sk=stock?.[form.itemCat+"__"+form.itemBrand+"__"+m];
-                return <option key={m} value={m}>{m}{sk?.totalIn>0?` （庫存: ${sk.stock}）`:""}</option>;
-              })}
+              {models.map(m=>{const sk=stock?.[form.itemCat+"__"+form.itemBrand+"__"+m];return <option key={m} value={m}>{m}{sk?.totalIn>0?` （庫存: ${sk.stock}）`:""}</option>;})}
               <option value="__custom">✏️ 手動輸入</option>
             </Sel>
           );
         })()}
-        {form.itemVariant==="__custom"&&(
-          <Input placeholder="手動輸入型號" value={form._customVariant||""} onChange={e=>setForm(f=>({...f,_customVariant:e.target.value}))}/>
-        )}
+        {form.itemVariant==="__custom"&&<Input placeholder="手動輸入型號" value={form._customVariant} onChange={e=>setForm(f=>({...f,_customVariant:e.target.value}))}/>}
 
-
-        <div style={{display:"flex",gap:8}}>
-          <div style={{flex:1}}><Input label="數量" type="number" value={form.qty} onChange={e=>setForm(f=>({...f,qty:e.target.value}))} placeholder="1"/></div>
-          <div style={{flex:2}}><Input label="金額 NT$（總金額）" type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0"/></div>
+        <div style={{display:"flex",gap:8,marginTop:4}}>
+          <div style={{flex:1}}><Input label="數量" type="number" value={form.qty} onChange={e=>setForm(f=>({...f,qty:e.target.value}))}/></div>
+          <div style={{flex:1}}><Input label="總金額 NT$" type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))}/></div>
         </div>
+        {form.amount&&Number(form.qty)>1&&<div style={{color:C.textDim,fontSize:11,marginTop:-6,marginBottom:8}}>單價：{fmt(Math.round(Number(form.amount)/Number(form.qty)))} / 件</div>}
         <Input label="備註（選填）" value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))}/>
         <Btn onClick={add}>新增進貨</Btn>
       </Card>
@@ -1054,25 +1054,50 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
 
       <Card>
         <H>🏭 廠商統計</H>
-        {Object.keys(byVendor).length===0?<div style={{color:C.textDim,fontSize:12}}>本月無進貨記錄</div>:
-          Object.entries(byVendor).map(([v,data])=>(
+        {Object.keys(byVendor).length===0
+          ?<div style={{color:C.textDim,fontSize:12}}>本月無進貨記錄</div>
+          :Object.entries(byVendor).map(([v,data])=>(
             <div key={v} style={{marginBottom:14}}>
               <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1.5px solid ${C.borderHi}`}}>
                 <span style={{color:C.accent,fontWeight:800}}>{v}</span>
                 <span style={{color:C.orange,fontWeight:800,fontSize:15}}>{fmt(data.total)}</span>
               </div>
               {data.rows.map(p=>(
-                <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0 6px 14px",borderBottom:`1px solid ${C.border}`}}>
-                  <div>
-                    <span style={{color:C.textMid,fontSize:12,fontWeight:600}}>{p.itemName||p.item||"—"}</span>
-                    {p.qty&&p.qty>1&&<span style={{color:C.textDim,fontSize:11,marginLeft:6}}>×{p.qty}</span>}
-                    <span style={{color:C.textDim,fontSize:11,marginLeft:8}}>{p.date}</span>
-                    {p.note&&<span style={{color:C.textDim,fontSize:10,marginLeft:8}}>· {p.note}</span>}
-                  </div>
-                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <span style={{color:C.text,fontWeight:700}}>{fmt(p.amount)}</span>
-                    <Btn v="danger" sm onClick={()=>del(p.id)}>✕</Btn>
-                  </div>
+                <div key={p.id}>
+                  {editId===p.id?(
+                    <div style={{padding:"10px 0 10px 14px",borderBottom:`1px solid ${C.border}`,background:"rgba(0,60,140,0.15)",borderRadius:8,margin:"4px 0"}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
+                        <Input label="總金額" type="number" value={editForm.amount} onChange={e=>setEditForm(f=>({...f,amount:e.target.value}))} style={{marginBottom:0}}/>
+                        <Input label="數量" type="number" value={editForm.qty} onChange={e=>setEditForm(f=>({...f,qty:e.target.value}))} style={{marginBottom:0}}/>
+                      </div>
+                      <Input label="型號" value={editForm.itemVariant||""} onChange={e=>setEditForm(f=>({...f,itemVariant:e.target.value}))} style={{marginBottom:6}}/>
+                      <Input label="備註" value={editForm.note||""} onChange={e=>setEditForm(f=>({...f,note:e.target.value}))} style={{marginBottom:6}}/>
+                      <div style={{display:"flex",gap:6}}>
+                        <Btn sm onClick={saveEdit}>✓ 儲存</Btn>
+                        <Btn v="ghost" sm onClick={()=>{setEditId(null);setEditForm(null);}}>取消</Btn>
+                      </div>
+                    </div>
+                  ):(
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0 8px 14px",borderBottom:`1px solid ${C.border}`}}>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                          <span style={{color:C.textMid,fontSize:13,fontWeight:600}}>{p.itemName||p.item||"—"}</span>
+                          {p.itemVariant&&<span style={{color:C.accent,fontSize:11,background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:5,padding:"1px 6px"}}>{p.itemVariant}</span>}
+                          <span style={{color:C.textDim,fontSize:11}}>{p.date}</span>
+                        </div>
+                        <div style={{display:"flex",gap:10,marginTop:3}}>
+                          <span style={{color:C.textDim,fontSize:11}}>數量：<span style={{color:C.text,fontWeight:700}}>{p.qty||1}</span></span>
+                          <span style={{color:C.textDim,fontSize:11}}>單價：<span style={{color:C.green,fontWeight:700}}>{fmt(Math.round(p.amount/(p.qty||1)))}</span></span>
+                          {p.note&&<span style={{color:C.textDim,fontSize:11}}>· {p.note}</span>}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                        <span style={{color:C.text,fontWeight:700,fontSize:14}}>{fmt(p.amount)}</span>
+                        <button onClick={()=>startEdit(p)} style={{background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:7,color:C.accent,cursor:"pointer",fontSize:12,padding:"4px 8px",fontFamily:"inherit",fontWeight:700}}>✏️</button>
+                        <Btn v="danger" sm onClick={()=>del(p.id)}>✕</Btn>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1082,11 +1107,17 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
 
       <Card>
         <H>📦 品項統計</H>
-        {Object.keys(byItem).length===0?<div style={{color:C.textDim,fontSize:12}}>本月無記錄</div>:
-          Object.entries(byItem).sort((a,b)=>b[1]-a[1]).map(([it,amt])=>(
-            <div key={it} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
-              <span style={{color:C.textMid}}>{it}</span>
-              <span style={{color:C.accent,fontWeight:700}}>{fmt(amt)}</span>
+        {Object.keys(byItem).length===0
+          ?<div style={{color:C.textDim,fontSize:12}}>本月無記錄</div>
+          :Object.entries(byItem).sort((a,b)=>b[1].total-a[1].total).map(([it,data])=>(
+            <div key={it} style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{color:C.textMid,fontWeight:600}}>{it}</span>
+                <span style={{color:C.accent,fontWeight:700}}>{fmt(data.total)}</span>
+              </div>
+              <div style={{color:C.textDim,fontSize:11,marginTop:2}}>
+                共 {data.qty} 件 · 平均單價 {fmt(Math.round(data.total/data.qty))}
+              </div>
             </div>
           ))
         }
