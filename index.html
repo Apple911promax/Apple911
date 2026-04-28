@@ -1248,6 +1248,13 @@ function InvCatEditor({catObj,ci,cats,updateCats,stock,tog,collapsed}) {
     <div style={{width:"100%"}} onClick={e=>e.stopPropagation()}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:isCol?0:8}}>
         <EditableText value={catObj.cat} onSave={v=>{const nc=[...cats];nc[ci]={...catObj,cat:v};updateCats(nc);}}/>
+        {/* 複製按鈕 */}
+        <button onClick={()=>{
+          const newName=prompt(`複製「${catObj.cat}」的結構，新品項名稱：`,"");
+          if(!newName||!newName.trim())return;
+          const copy=JSON.parse(JSON.stringify({...catObj,cat:newName.trim()}));
+          updateCats([...cats,copy]);
+        }} style={{background:"rgba(0,100,200,0.2)",border:`1px solid rgba(0,150,255,0.4)`,borderRadius:7,color:C.accent,cursor:"pointer",fontSize:11,fontWeight:700,padding:"2px 8px",fontFamily:"inherit",flexShrink:0}}>複製</button>
         <button onClick={()=>{if(!confirm(`刪除「${catObj.cat}」？`))return;updateCats(cats.filter(c=>c.cat!==catObj.cat));}} style={{background:"rgba(255,50,80,0.15)",border:`1px solid rgba(255,60,90,0.4)`,borderRadius:7,color:"#ff3d5a",cursor:"pointer",fontSize:11,fontWeight:700,padding:"2px 8px",fontFamily:"inherit",flexShrink:0}}>刪</button>
         <span onClick={()=>tog(k)} style={{color:C.accent,fontSize:16,transform:isCol?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 4px",flexShrink:0}}>⌃</span>
       </div>
