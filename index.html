@@ -1023,6 +1023,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   const [fm,setFm] = useState(nowYM().m);
   const [form,setForm] = useState({date:today(),vendor:"",customVendor:"",itemCat:"",itemBrand:"",itemSeries:"",itemVariant:"",_customVariant:"",qty:"1",amount:"",note:""});
   const [fd,setFd] = useState("全部");
+  const [editId,setEditId] = useState(null);
   const [editForm,setEditForm] = useState(null);
 
   const cats = Array.isArray(catalog.purchaseCategories)?catalog.purchaseCategories:DEF.purchaseCategories;
