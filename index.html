@@ -2909,7 +2909,7 @@ function App() {
         // 如果 DEF 有 stockItem 但 Firebase 沒有，補上去
         if(defItem?.stockItem && !ri.stockItem) return {...ri, stockItem: defItem.stockItem};
         return ri;
-      }););
+      });
 
       return {...DEF,...raw,
         repairItems: fixedRepairItems,
