@@ -1073,6 +1073,7 @@ function InventoryPage({stock,catalog,setCatalog}) {
   const [collapsed,setCollapsed]     = useState({});
   const [managing,setManaging]       = useState(false);
   const [newCatName,setNewCatName]   = useState("");
+  const [copyFrom,setCopyFrom]       = useState("");
 
   const cats = Array.isArray(catalog.purchaseCategories) ? catalog.purchaseCategories : DEF.purchaseCategories;
   function sc(next){ setCatalog(next); save(SK.catalog,next); }
@@ -1123,13 +1124,27 @@ function InventoryPage({stock,catalog,setCatalog}) {
       {managing&&(
         <Card hi style={{marginBottom:10}}>
           <H>新增品項大類</H>
-          <div style={{display:"flex",gap:8}}>
+          <div style={{display:"flex",gap:8,marginBottom:8}}>
             <input value={newCatName} onChange={e=>setNewCatName(e.target.value)}
-              placeholder="如：電池、螢幕、後鏡頭"
-              onKeyDown={e=>{if(e.key==="Enter"&&newCatName.trim()){updateCats([...cats,{cat:newCatName.trim(),brands:[]}]);setNewCatName("");}}}
+              placeholder="新品項名稱（如：螢幕、後鏡頭）"
+              onKeyDown={e=>{if(e.key==="Enter"&&newCatName.trim()){updateCats([...cats,{cat:newCatName.trim(),brands:copyFrom?JSON.parse(JSON.stringify((cats.find(c=>c.cat===copyFrom)?.brands||[]))):[]}]);setNewCatName("");setCopyFrom("");}}}
               style={{flex:1,background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit"}}/>
-            <Btn sm onClick={()=>{if(!newCatName.trim())return;updateCats([...cats,{cat:newCatName.trim(),brands:[]}]);setNewCatName("");}}>新增</Btn>
+            <Btn sm onClick={()=>{if(!newCatName.trim())return;updateCats([...cats,{cat:newCatName.trim(),brands:copyFrom?JSON.parse(JSON.stringify((cats.find(c=>c.cat===copyFrom)?.brands||[]))):[]}]);setNewCatName("");setCopyFrom("");}}>新增</Btn>
           </div>
+          {/* 複製結構選項 */}
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{color:C.textDim,fontSize:12,flexShrink:0}}>複製型號結構自：</span>
+            <select value={copyFrom} onChange={e=>setCopyFrom(e.target.value)}
+              style={{flex:1,background:"rgba(0,20,70,0.9)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"7px 10px",fontSize:13,outline:"none",fontFamily:"inherit"}}>
+              <option value="">從空白開始</option>
+              {cats.map(c=><option key={c.cat} value={c.cat}>{c.cat}</option>)}
+            </select>
+          </div>
+          {copyFrom&&(
+            <div style={{marginTop:6,color:C.textDim,fontSize:11}}>
+              ✅ 新品項會複製「{copyFrom}」的品牌、系列、型號結構，你只需要改品項名稱
+            </div>
+          )}
         </Card>
       )}
 
