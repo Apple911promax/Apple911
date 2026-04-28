@@ -551,6 +551,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
   const [totalPrice,setTotalPrice] = useState(editOrder?.totalRevenue||"");
   const [custItem,setCustItem] = useState({name:"",cost:""});
   const [filterCat,setFilterCat]= useState("全部");
+  const [selSeries,setSelSeries] = useState("");
 
   const brandObj  = catalog.brands.find(b=>b.id===brand);
   const allSeries = brandObj?.series || (brandObj?.models ? [{name:"全部型號", models:brandObj.models}] : []);
@@ -559,7 +560,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
   const vendorList= catalog.vendors||DEF.vendors;
   const visItems  = filterCat==="全部"?catalog.repairItems:catalog.repairItems.filter(i=>i.cat===filterCat);
 
-  const modelName = model==="_custom"?modelFree:model;
+  const modelName = (model==="_custom"||model==="__custom")?modelFree:model;
   const brandName = brandObj?.name||(brand==="_custom"?modelFree:"");
 
   function togglePay(p)    { setPayments(ps=>ps.includes(p)?ps.filter(x=>x!==p):[...ps,p]); }
@@ -611,30 +612,23 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
         </Sel>
         {brand && brand!=="other" && allSeries.length>0 && (
           <div style={{marginBottom:10}}>
-            <div style={{color:C.textDim,fontSize:11,fontWeight:600,letterSpacing:.7,textTransform:"uppercase",marginBottom:5}}>② 系列 / 型號</div>
-            {allSeries.map(ser=>(
-              <div key={ser.name} style={{marginBottom:8}}>
-                <div style={{color:C.textMid,fontSize:11,fontWeight:700,marginBottom:4,paddingLeft:4}}>
-                  ▸ {ser.name}
-                </div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:5,paddingLeft:8}}>
-                  {ser.models.map(m=>(
-                    <button key={m} onClick={()=>{setModel(m);setModelFree(m);}} style={{
-                      padding:"6px 10px",borderRadius:8,border:"none",cursor:"pointer",
-                      fontSize:12,fontWeight:600,fontFamily:"inherit",
-                      background:model===m?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(0,40,110,0.5)",
-                      color:model===m?"#fff":C.textMid,
-                      transition:"all .15s",
-                      boxShadow:model===m?`0 2px 8px ${C.accent}44`:"none",
-                    }}>{m}</button>
-                  ))}
-                </div>
-              </div>
-            ))}
-            <button onClick={()=>{setModel("_custom");setModelFree("");}} style={{
-              marginTop:4,padding:"6px 12px",borderRadius:8,border:`1px dashed ${C.border}`,
-              background:"transparent",color:C.textDim,fontSize:12,cursor:"pointer",fontFamily:"inherit",
-            }}>✏️ 手動輸入型號</button>
+            {/* ② 選系列 */}
+            <Sel label="② 系列" value={selSeries} onChange={e=>{setSelSeries(e.target.value);setModel("");setModelFree("");}}>
+              <option value="">選擇系列</option>
+              {allSeries.map(s=><option key={s.name} value={s.name}>{s.name}</option>)}
+            </Sel>
+            {/* ③ 選型號 */}
+            {selSeries&&(()=>{
+              const serObj=allSeries.find(s=>s.name===selSeries);
+              return serObj&&(
+                <Sel label="③ 型號" value={model} onChange={e=>{setModel(e.target.value);setModelFree(e.target.value==="__custom"?"":e.target.value);}}>
+                  <option value="">選擇型號</option>
+                  {serObj.models.map(m=><option key={m} value={m}>{m}</option>)}
+                  <option value="__custom">✏️ 手動輸入</option>
+                </Sel>
+              );
+            })()}
+            {model==="__custom"&&<Input label="手動輸入型號" value={modelFree} onChange={e=>setModelFree(e.target.value)} placeholder="輸入型號名稱"/>}
           </div>
         )}
         {(model==="_custom"||brand==="_custom"||(brand&&modelList.length===0))&&(
@@ -1863,8 +1857,7 @@ function AdminPage({catalog,setCatalog,isBoss}) {
             <option value="">不關聯庫存</option>
             {(catalog.purchaseItems||DEF.purchaseItems).map(it=><option key={it} value={it}>{it}</option>)}
           </Sel>
-          <div style={{display:"flex",gap:8}}><div style={{flex:1}}><Input label="預設成本" type="number" value={ni.defaultCost} onChange={e=>setNi(i=>({...i,defaultCost:e.target.value}))}/></div><div style={{flex:1}}><Input label="預設售價" type="number" value={ni.defaultPrice} onChange={e=>setNi(i=>({...i,defaultPrice:e.target.value}))}/></div></div>
-          <Btn onClick={()=>{if(!ni.name)return;sc({...catalog,repairItems:[...catalog.repairItems,{...ni,id:"ci_"+uid(),defaultCost:Number(ni.defaultCost)||0,defaultPrice:Number(ni.defaultPrice)||0}]});setNi({name:"",cat:RCATS[0],defaultCost:"",defaultPrice:"",stockItem:""});}}>新增項目</Btn>
+                    <Btn onClick={()=>{if(!ni.name)return;sc({...catalog,repairItems:[...catalog.repairItems,{...ni,id:"ci_"+uid(),defaultCost:Number(ni.defaultCost)||0,defaultPrice:Number(ni.defaultPrice)||0}]});setNi({name:"",cat:RCATS[0],defaultCost:"",defaultPrice:"",stockItem:""});}}>新增項目</Btn>
         </Card>
         {RCATS.map(cat=>{const its=catalog.repairItems.filter(i=>i.cat===cat);if(!its.length)return null;return(<Card key={cat}><div style={{color:C.accent,fontWeight:700,marginBottom:8,fontSize:13}}>{cat}</div>{its.map(i=>(<div key={i.id} style={rowSt}><div><span style={{color:C.text,fontSize:13}}>{i.name}</span>{i.stockItem&&<span style={{color:C.textDim,fontSize:10,marginLeft:6}}>庫存:{i.stockItem}</span>}<span style={{color:C.textDim,fontSize:11,marginLeft:8}}>成本{fmt(i.defaultCost)}/售{fmt(i.defaultPrice)}</span></div><Btn v="danger" sm onClick={()=>sc({...catalog,repairItems:catalog.repairItems.filter(x=>x.id!==i.id)})}>刪</Btn></div>))}</Card>);})}
       </div>)}
