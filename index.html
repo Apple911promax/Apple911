@@ -2164,10 +2164,10 @@ function AdminPage({catalog,setCatalog,isBoss}) {
             <Btn sm onClick={()=>{if(!nrc?.trim())return;sc({...catalog,repairCats:[...(catalog.repairCats||RCATS),nrc.trim()]});setNrc("");}}>新增</Btn>
           </div>
           <SortableList
-            items={(catalog.repairCats||RCATS).map(c=>({id:c,name:c}))}
-            onReorder={arr=>sc({...catalog,repairCats:arr.map(x=>x.name)})}
-            onDelete={item=>{if(!confirm(`刪除類別「${item.name}」？`))return;sc({...catalog,repairCats:(catalog.repairCats||RCATS).filter(c=>c!==item.name)});}}
-            onEdit={(item,_,v)=>sc({...catalog,repairCats:(catalog.repairCats||RCATS).map(c=>c===item.name?v:c),repairItems:catalog.repairItems.map(i=>i.cat===item.name?{...i,cat:v}:i)})}
+            items={(catalog.repairCats||RCATS)}
+            onReorder={arr=>sc({...catalog,repairCats:arr})}
+            onDelete={cat=>{if(!confirm(`刪除類別「${cat}」？`))return;sc({...catalog,repairCats:(catalog.repairCats||RCATS).filter(c=>c!==cat)});}}
+            onEdit={(cat,_,v)=>sc({...catalog,repairCats:(catalog.repairCats||RCATS).map(c=>c===cat?v:c),repairItems:catalog.repairItems.map(i=>i.cat===cat?{...i,cat:v}:i)})}
           />
         </Card>
         {(catalog.repairCats||RCATS).map(cat=>{
