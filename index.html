@@ -2148,12 +2148,16 @@ function AdminPage({catalog,setCatalog,isBoss,orders,setOrders}) {
                           newSeries[idx]={...ser,models:ser.models.filter(m=>m!==mo)};
                           sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
                         }}
-                        onEdit={(_,mi,newVal)=>{
+                        onEdit={(oldVal,mi,newVal)=>{
                           const newSeries=[...bSeries];
                           const newModels=[...ser.models];
                           newModels[mi]=newVal;
                           newSeries[idx]={...ser,models:newModels};
                           sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
+                          // 同步更新所有工單的 modelName
+                          const updatedOrders=orders.map(o=>o.modelName===oldVal?{...o,modelName:newVal}:o);
+                          setOrders(updatedOrders);
+                          save(SK.orders,updatedOrders);
                         }}
                       />
 
