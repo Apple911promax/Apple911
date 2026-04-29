@@ -1259,13 +1259,13 @@ function InventoryPage({stock,catalog,setCatalog}) {
         <Card style={{border:`1.5px solid ${C.red}`,background:"rgba(255,40,70,0.08)",marginBottom:10}}>
           <H>🚨 庫存預警</H>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {lowItems.map(x=>(
-              <div key={x.cat+x.brand+x.model} style={{background:"rgba(255,40,70,0.15)",border:`1px solid ${C.red}`,borderRadius:10,padding:"6px 12px",textAlign:"center"}}>
+            {lowItems.map(x=>{const allModels=[x.model,...(x.aliases||[])];return (
+              <div key={x.stockId} style={{background:"rgba(255,40,70,0.15)",border:`1px solid ${C.red}`,borderRadius:10,padding:"6px 12px",textAlign:"center"}}>
                 <div style={{color:C.red,fontWeight:800,fontSize:12}}>{x.cat}</div>
-                <div style={{color:"#ff8899",fontSize:10}}>{x.brand} · {x.model}</div>
+                <div style={{color:"#ff8899",fontSize:10}}>{x.brand} · {allModels.join(" / ")}</div>
                 <div style={{color:C.red,fontSize:12,fontWeight:700}}>剩 {x.stock}</div>
               </div>
-            ))}
+            );})}
           </div>
         </Card>
       )}
