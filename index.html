@@ -1477,12 +1477,12 @@ function InvSeriesEditor({sObj,si,bObj,bi,catObj,ci,cats,updateCats,tog,collapse
 
   return(
     <div style={{width:"100%"}} onClick={e=>e.stopPropagation()}>
-      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:isCol?0:6}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:isCol?0:6,flexWrap:"wrap"}}>
         <EditableText value={sObj.name} onSave={v=>{const nc=[...cats];const nb=[...(catObj.brands||[])];const ns=[...(bObj.series||[])];ns[si]={...sObj,name:v};nb[bi]={...bObj,series:ns};nc[ci]={...catObj,brands:nb};updateCats(nc);}}/>
-        <span style={{color:C.textDim,fontSize:11,flexShrink:0}}>{sObj.models.length} 型號</span>
-        <button onClick={()=>setShowIds(s=>!s)} style={{background:showIds?"rgba(0,100,255,0.2)":"rgba(255,255,255,0.05)",border:`1px solid ${showIds?C.accent:C.border}`,borderRadius:6,color:showIds?C.accent:C.textDim,cursor:"pointer",fontSize:10,fontWeight:700,padding:"2px 7px",fontFamily:"inherit",flexShrink:0}}>🔗 通用</button>
-        <button onClick={()=>{if(!confirm(`刪除系列「${sObj.name}」？`))return;const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...bObj,series:(bObj.series||[]).filter((_,i)=>i!==si)};nc[ci]={...catObj,brands:nb};updateCats(nc);}} style={{background:"rgba(255,50,80,0.15)",border:`1px solid rgba(255,60,90,0.4)`,borderRadius:7,color:"#ff3d5a",cursor:"pointer",fontSize:11,fontWeight:700,padding:"2px 8px",fontFamily:"inherit",flexShrink:0}}>刪</button>
-        <span onClick={()=>tog(k)} style={{color:C.textMid,fontSize:13,transform:isCol?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 4px",flexShrink:0}}>⌃</span>
+        <span style={{color:C.textDim,fontSize:11,flexShrink:0}}>{sObj.models.length}型</span>
+        <button onClick={()=>setShowIds(s=>!s)} style={{background:showIds?"rgba(0,100,255,0.2)":"rgba(255,255,255,0.05)",border:`1px solid ${showIds?C.accent:C.border}`,borderRadius:6,color:showIds?C.accent:C.textDim,cursor:"pointer",fontSize:10,fontWeight:700,padding:"2px 6px",fontFamily:"inherit",flexShrink:0}}>🔗</button>
+        <button onClick={()=>{if(!confirm(`刪除系列「${sObj.name}」？`))return;const nc=[...cats];const nb=[...(catObj.brands||[])];nb[bi]={...bObj,series:(bObj.series||[]).filter((_,i)=>i!==si)};nc[ci]={...catObj,brands:nb};updateCats(nc);}} style={{background:"rgba(255,50,80,0.15)",border:`1px solid rgba(255,60,90,0.4)`,borderRadius:6,color:"#ff3d5a",cursor:"pointer",fontSize:11,fontWeight:700,padding:"2px 6px",fontFamily:"inherit",flexShrink:0}}>刪</button>
+        <span onClick={()=>tog(k)} style={{color:C.textMid,fontSize:13,transform:isCol?"rotate(0)":"rotate(180deg)",transition:"transform .2s",cursor:"pointer",padding:"0 2px",flexShrink:0}}>⌃</span>
       </div>
       {!isCol&&(
         <div style={{paddingLeft:8}}>
@@ -1931,7 +1931,7 @@ function AdminPage({catalog,setCatalog,isBoss}) {
   const [pin,setPin]           = useState("");
   const [pinErr,setPinErr]     = useState(false);
   const [tab,setTab]           = useState("brands");
-  const [nb,setNb]=useState(""); const [sb,setSb]=useState(""); const [nm,setNm]=useState("");
+  const [nb,setNb]=useState(""); const [sb,setSb]=useState(""); const [nm,setNm]=useState(""); const [nrc,setNrc]=useState("");
   const [newSeriesName, setNewSeriesName] = useState(()=>{
     // 預設所有品牌收合
     const init={};
@@ -2136,24 +2136,61 @@ function AdminPage({catalog,setCatalog,isBoss}) {
         <Card hi>
           <H>新增維修/配件項目</H>
           <Input label="項目名稱" value={ni.name} onChange={e=>setNi(i=>({...i,name:e.target.value}))}/>
-          <Sel label="類別" value={ni.cat} onChange={e=>setNi(i=>({...i,cat:e.target.value}))}>{RCATS.map(c=><option key={c} value={c}>{c}</option>)}</Sel>
-          <Sel label="對應庫存品項（用於自動帶入成本）" value={ni.stockItem||""} onChange={e=>setNi(i=>({...i,stockItem:e.target.value}))}>
+          <Sel label="類別" value={ni.cat} onChange={e=>setNi(i=>({...i,cat:e.target.value}))}>
+            {(catalog.repairCats||RCATS).map(c=><option key={c} value={c}>{c}</option>)}
+          </Sel>
+          <Sel label="對應庫存品項" value={ni.stockItem||""} onChange={e=>setNi(i=>({...i,stockItem:e.target.value}))}>
             <option value="">不關聯庫存</option>
             {(Array.isArray(catalog.purchaseCategories)?catalog.purchaseCategories:DEF.purchaseCategories).map(x=><option key={x.cat} value={x.cat}>{x.cat}</option>)}
           </Sel>
-          {/* 庫存ID連結 - 用於通用型號 */}
           <div style={{marginBottom:10}}>
-            <div style={{color:C.textDim,fontSize:11,fontWeight:600,marginBottom:4}}>🔗 連結庫存ID（通用型號用）</div>
-            <div style={{color:C.textDim,fontSize:10,marginBottom:6}}>填入庫存裡設定的通用ID，讓多個維修項目共用同一個庫存數量</div>
-            <input value={ni.stockId||""} onChange={e=>setNi(i=>({...i,stockId:e.target.value}))}
-              placeholder="例如：保護貼__iPhone__14Pro/15/16通用"
+            <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>🔗 連結庫存ID（通用型號）</div>
+            <input value={ni.stockId||""} onChange={e=>setNi(i=>({...i,stockId:e.target.value}))} placeholder="填入庫存通用ID"
               style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${ni.stockId?C.gold:C.border}`,borderRadius:8,color:C.gold,padding:"8px 12px",fontSize:12,outline:"none",fontFamily:"inherit"}}/>
           </div>
-          <Btn onClick={()=>{if(!ni.name)return;sc({...catalog,repairItems:[...catalog.repairItems,{...ni,id:"ci_"+uid(),defaultCost:Number(ni.defaultCost)||0,defaultPrice:Number(ni.defaultPrice)||0}]});setNi({name:"",cat:RCATS[0],defaultCost:"",defaultPrice:"",stockItem:"",stockId:""});}}>新增項目</Btn>
+          <Btn onClick={()=>{if(!ni.name)return;sc({...catalog,repairItems:[...catalog.repairItems,{...ni,id:"ci_"+uid(),defaultCost:0,defaultPrice:0}]});setNi({name:"",cat:(catalog.repairCats||RCATS)[0],stockItem:"",stockId:""});}}>新增項目</Btn>
         </Card>
-        {RCATS.map(cat=>{const its=catalog.repairItems.filter(i=>i.cat===cat);if(!its.length)return null;return(<Card key={cat}><div style={{color:C.accent,fontWeight:700,marginBottom:8,fontSize:13}}>{cat}</div>{its.map(i=>(<div key={i.id} style={rowSt}><div><span style={{color:C.text,fontSize:13}}>{i.name}</span>{i.stockItem&&<span style={{color:C.textDim,fontSize:10,marginLeft:6}}>庫存:{i.stockItem}</span>}{i.stockId&&<span style={{color:C.gold,fontSize:10,marginLeft:6}}>🔗{i.stockId}</span>}</div><Btn v="danger" sm onClick={()=>sc({...catalog,repairItems:catalog.repairItems.filter(x=>x.id!==i.id)})}>刪</Btn></div>))}</Card>);})}
+        <Card>
+          <H>📂 類別管理</H>
+          <div style={{display:"flex",gap:6,marginBottom:8}}>
+            <input value={nrc||""} onChange={e=>setNrc(e.target.value)} placeholder="新增類別名稱"
+              style={{flex:1,background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+            <Btn sm onClick={()=>{if(!nrc?.trim())return;sc({...catalog,repairCats:[...(catalog.repairCats||RCATS),nrc.trim()]});setNrc("");}}>新增</Btn>
+          </div>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+            {(catalog.repairCats||RCATS).map(cat=>(
+              <div key={cat} style={{display:"flex",alignItems:"center",gap:4,background:"rgba(0,40,100,0.3)",border:`1px solid ${C.border}`,borderRadius:8,padding:"4px 10px"}}>
+                <span style={{color:C.textMid,fontSize:12}}>{cat}</span>
+                <button onClick={()=>{if(!confirm("刪除此類別？"))return;sc({...catalog,repairCats:(catalog.repairCats||RCATS).filter(c=>c!==cat)});}} style={{background:"none",border:"none",color:"#ff3d5a",cursor:"pointer",fontSize:12,padding:"0 2px"}}>✕</button>
+              </div>
+            ))}
+          </div>
+        </Card>
+        {(catalog.repairCats||RCATS).map(cat=>{
+          const its=catalog.repairItems.filter(i=>i.cat===cat);
+          if(!its.length)return null;
+          return(
+            <Card key={cat}>
+              <div style={{color:C.accent,fontWeight:700,marginBottom:8,fontSize:13}}>{cat}</div>
+              <SortableList
+                items={its}
+                onReorder={arr=>{const others=catalog.repairItems.filter(i=>i.cat!==cat);sc({...catalog,repairItems:[...others,...arr]});}}
+                onDelete={item=>sc({...catalog,repairItems:catalog.repairItems.filter(x=>x.id!==item.id)})}
+                onEdit={(item,_,v)=>sc({...catalog,repairItems:catalog.repairItems.map(x=>x.id===item.id?{...x,name:v}:x)})}
+                renderLabel={(item)=>(
+                  <div style={{flex:1}}>
+                    <div style={{color:C.text,fontSize:13}}>{item.name}</div>
+                    <div style={{display:"flex",gap:6,marginTop:2}}>
+                      {item.stockItem&&<span style={{color:C.textDim,fontSize:10}}>庫存:{item.stockItem}</span>}
+                      {item.stockId&&<span style={{color:C.gold,fontSize:10}}>🔗{item.stockId}</span>}
+                    </div>
+                  </div>
+                )}
+              />
+            </Card>
+          );
+        })}
       </div>)}
-
       {tab==="vendors"&&(<div>
         <Card><H>零件廠商</H>{addRow(nv,()=>{if(!nv)return;sc({...catalog,vendors:[...catalog.vendors,nv]});setNv("");},setNv,"廠商名稱")}<SortableList
           items={catalog.vendors||[]}
