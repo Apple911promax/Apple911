@@ -1033,12 +1033,14 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   const cats = Array.isArray(catalog.purchaseCategories)?catalog.purchaseCategories:DEF.purchaseCategories;
 
   function add(){
-    if(!form.amount||!form.itemCat)return;
+    if(!form.amount)return;
+    const itemCat = form.itemCat==="__custom" ? (form._customCat||"").trim() : form.itemCat;
+    if(!itemCat)return;
     const vendorName=form.vendor==="_custom"?form.customVendor:form.vendor;
     const itemVariant=form.itemVariant==="__custom"?form._customVariant:form.itemVariant;
-    const rec={...form,id:uid(),amount:Number(form.amount),qty:Number(form.qty)||1,vendorName,itemName:form.itemCat,itemVariant};
+    const rec={...form,id:uid(),amount:Number(form.amount),qty:Number(form.qty)||1,vendorName,itemName:itemCat,itemCat,itemVariant};
     const next=[...purchases,rec]; setPurchases(next); save(SK.purchases,next);
-    setForm(f=>({...f,vendor:"",customVendor:"",itemCat:"",itemBrand:"",itemSeries:"",itemVariant:"",_customVariant:"",qty:"1",amount:"",note:""}));
+    setForm(f=>({...f,vendor:"",customVendor:"",itemCat:"",_customCat:"",itemBrand:"",itemSeries:"",itemVariant:"",_customVariant:"",qty:"1",amount:"",note:""}));
   }
   function del(id){if(!confirm("確定刪除？"))return;const next=purchases.filter(p=>p.id!==id);setPurchases(next);save(SK.purchases,next);}
   function startEdit(p){setEditId(p.id);setEditForm({...p,amount:String(p.amount),qty:String(p.qty||1)});}
@@ -1069,7 +1071,11 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
         <Sel label="① 零件品項" value={form.itemCat} onChange={e=>setForm(f=>({...f,itemCat:e.target.value,itemBrand:"",itemSeries:"",itemVariant:""}))}>
           <option value="">選擇品項</option>
           {cats.map(({cat})=><option key={cat} value={cat}>{cat}</option>)}
+          <option value="__custom">✏️ 手動輸入品項名稱</option>
         </Sel>
+        {form.itemCat==="__custom"&&(
+          <Input placeholder="輸入品項名稱（如：螢幕、前鏡頭...）" value={form._customCat||""} onChange={e=>setForm(f=>({...f,_customCat:e.target.value}))}/>
+        )}
         {form.itemCat&&(()=>{
           const catObj=cats.find(x=>x.cat===form.itemCat);
           const brands=catObj?.brands||[];
