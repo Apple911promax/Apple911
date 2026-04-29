@@ -1939,7 +1939,7 @@ function EditableText({value, onSave, style}) {
 }
 
 // ─── ADMIN PAGE (PIN protected) ───────────────────────────────────────────────
-function AdminPage({catalog,setCatalog,isBoss}) {
+function AdminPage({catalog,setCatalog,isBoss,orders,setOrders}) {
   const [unlocked,setUnlocked] = useState(false);
   const [pin,setPin]           = useState("");
   const [pinErr,setPinErr]     = useState(false);
@@ -2010,6 +2010,9 @@ function AdminPage({catalog,setCatalog,isBoss}) {
                   const arr=[...catalog.brands];
                   arr[i]={...arr[i],name:newName};
                   sc({...catalog,brands:arr});
+                  const updatedOrders = orders.map(o=>o.brand===b.id ? {...o,brandName:newName} : o);
+                  save('orders', updatedOrders);
+                  setOrders(updatedOrders);
                 }}/>
               </div>
               <div style={{color:C.textDim,fontSize:11,flexShrink:0}}>{(b.series||[]).length} 個系列</div>
@@ -2605,7 +2608,7 @@ function App() {
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
         {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses}/>}
         {page==="lookup"   &&<LookupPage/>}
-        {page==="admin"    &&<AdminPage     catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} isBoss={role==="boss"}/>}
+        {page==="admin"    &&<AdminPage     catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} isBoss={role==="boss"} orders={orders} setOrders={setOrders}/>}
       </div>
 
 
