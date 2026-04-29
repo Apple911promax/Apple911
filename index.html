@@ -538,6 +538,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
   const payMethods= catalog.paymentMethods||DEF.paymentMethods;
   const vendorList= catalog.vendors||DEF.vendors;
   const visItems  = filterCat==="全部"?catalog.repairItems:catalog.repairItems.filter(i=>i.cat===filterCat);
+  const repairCats = catalog.repairCats||RCATS;
 
   const modelName = (model==="_custom"||model==="__custom")?modelFree:model;
   const brandName = brandObj?.name||(brand==="_custom"?modelFree:"");
@@ -753,7 +754,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
       <Card>
         <H>🔩 選擇維修 / 配件項目（可複選）</H>
         <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}}>
-          {["全部",...RCATS].map(cat=>(
+          {["全部",...(catalog.repairCats||RCATS)].map(cat=>(
             <button key={cat} onClick={()=>setFilterCat(cat)} style={{padding:"4px 10px",borderRadius:16,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit",background:filterCat===cat?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(255,255,255,0.06)",color:filterCat===cat?"#fff":C.textMid}}>{cat}</button>
           ))}
         </div>
