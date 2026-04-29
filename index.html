@@ -2163,14 +2163,12 @@ function AdminPage({catalog,setCatalog,isBoss}) {
               style={{flex:1,background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
             <Btn sm onClick={()=>{if(!nrc?.trim())return;sc({...catalog,repairCats:[...(catalog.repairCats||RCATS),nrc.trim()]});setNrc("");}}>新增</Btn>
           </div>
-          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-            {(catalog.repairCats||RCATS).map(cat=>(
-              <div key={cat} style={{display:"flex",alignItems:"center",gap:4,background:"rgba(0,40,100,0.3)",border:`1px solid ${C.border}`,borderRadius:8,padding:"4px 10px"}}>
-                <span style={{color:C.textMid,fontSize:12}}>{cat}</span>
-                <button onClick={()=>{if(!confirm("刪除此類別？"))return;sc({...catalog,repairCats:(catalog.repairCats||RCATS).filter(c=>c!==cat)});}} style={{background:"none",border:"none",color:"#ff3d5a",cursor:"pointer",fontSize:12,padding:"0 2px"}}>✕</button>
-              </div>
-            ))}
-          </div>
+          <SortableList
+            items={(catalog.repairCats||RCATS).map(c=>({id:c,name:c}))}
+            onReorder={arr=>sc({...catalog,repairCats:arr.map(x=>x.name)})}
+            onDelete={item=>{if(!confirm(`刪除類別「${item.name}」？`))return;sc({...catalog,repairCats:(catalog.repairCats||RCATS).filter(c=>c!==item.name)});}}
+            onEdit={(item,_,v)=>sc({...catalog,repairCats:(catalog.repairCats||RCATS).map(c=>c===item.name?v:c),repairItems:catalog.repairItems.map(i=>i.cat===item.name?{...i,cat:v}:i)})}
+          />
         </Card>
         {(catalog.repairCats||RCATS).map(cat=>{
           const its=catalog.repairItems.filter(i=>i.cat===cat);
