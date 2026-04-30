@@ -100,7 +100,7 @@ function load(k, d) { return localLoad(k, d); }
 const uid  = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const fmt  = n  => `NT$ ${Number(n||0).toLocaleString()}`;
 const mkey = (y,m) => `${y}-${String(m).padStart(2,"0")}`;
-const today= () => new Date().toISOString().slice(0,10);
+const today= () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const nowYM= () => { const d=new Date(); return {y:d.getFullYear(),m:d.getMonth()+1}; };
 const MZ   = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 // ─── CUSTOM DATE PICKER (全數字，無英文) ──────────────────────────────────────
