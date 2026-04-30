@@ -530,6 +530,8 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
   const [totalPrice,setTotalPrice] = useState(editOrder?.totalRevenue||"");
   const [custItem,setCustItem] = useState({name:"",cost:""});
   const [filterCat,setFilterCat]= useState("全部");
+  const [purSearch,setPurSearch] = useState("");
+  const [purOpen,setPurOpen] = useState(false);
   const [selSeries,setSelSeries] = useState("");
 
   const brandObj  = catalog.brands.find(b=>b.id===brand);
@@ -784,6 +786,60 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
             );
           })}
         </div>
+      </Card>
+
+      {/* 搜尋進貨記錄 */}
+      <Card>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}} onClick={()=>setPurOpen(o=>!o)}>
+          <H style={{margin:0}}>🔍 搜尋進貨記錄帶入成本</H>
+          <span style={{color:C.accent,fontSize:18,transform:purOpen?"rotate(180deg)":"rotate(0)",transition:"transform .2s"}}>⌃</span>
+        </div>
+        {purOpen&&(()=>{
+          const q=purSearch.toLowerCase();
+          const results=(purchases||[]).filter(p=>{
+            if(!q) return true;
+            return [p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase().includes(q);
+          }).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);
+          return(
+            <div style={{marginTop:10}}>
+              <input
+                value={purSearch} onChange={e=>setPurSearch(e.target.value)}
+                autoFocus
+                placeholder="搜尋品項、型號、廠商…"
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1.5px solid ${C.accent}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit",marginBottom:10}}
+              />
+              {results.length===0&&<div style={{color:C.textDim,fontSize:12,textAlign:"center",padding:12}}>找不到符合的進貨記錄</div>}
+              {results.map(p=>{
+                const unitCost=Math.round(p.amount/(p.qty||1));
+                return(
+                  <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",marginBottom:6,borderRadius:10,border:`1px solid ${C.border}`,background:"rgba(0,20,60,0.4)"}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                        <span style={{color:C.text,fontSize:13,fontWeight:700}}>{p.itemName||p.itemCat||"—"}</span>
+                        {(p.itemBrand||p.itemVariant)&&<span style={{color:C.accent,fontSize:11,background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:4,padding:"1px 5px"}}>{[p.itemBrand,p.itemVariant].filter(Boolean).join(" ")}</span>}
+                        {p.vendorName&&<span style={{color:C.gold,fontSize:11}}>📦{p.vendorName}</span>}
+                      </div>
+                      <div style={{display:"flex",gap:10,marginTop:3,flexWrap:"wrap"}}>
+                        <span style={{color:C.textDim,fontSize:11}}>🗓 {p.date}</span>
+                        <span style={{color:C.textDim,fontSize:11}}>數量：{p.qty||1}</span>
+                        <span style={{color:C.green,fontSize:12,fontWeight:700}}>單價 {fmt(unitCost)}</span>
+                      </div>
+                      {p.note&&<div style={{color:C.textDim,fontSize:11,marginTop:2}}>備註：{p.note}</div>}
+                    </div>
+                    <button
+                      onClick={()=>{
+                        const name=[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join(" ");
+                        setItems(prev=>[...prev,{id:"pur_"+p.id,name,cat:"進貨帶入",stockItem:"",cost:unitCost,qty:1,autoPrice:true}]);
+                        setPurOpen(false);setPurSearch("");
+                      }}
+                      style={{flexShrink:0,marginLeft:10,background:`linear-gradient(135deg,${C.accent2},${C.accent})`,border:"none",borderRadius:9,color:"#fff",fontSize:12,fontWeight:700,padding:"8px 14px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
+                    >＋ 帶入</button>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </Card>
 
       {/* 自定義 */}
@@ -1091,7 +1147,6 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   const [form,setForm] = useState({date:today(),vendor:"",customVendor:"",itemCat:"",itemBrand:"",itemSeries:"",itemVariant:"",_customVariant:"",qty:"1",amount:"",note:""});
   const [cart,setCart] = useState([]); // 購物車暫存
   const [fd,setFd] = useState("全部");
-  const [q,setQ] = useState("");
   const [editId,setEditId] = useState(null);
   const [editForm,setEditForm] = useState(null);
 
@@ -1136,12 +1191,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   }
 
   const curMK=mkey(fy,fm);
-  const filtered=purchases.filter(p=>{
-    const mok=p.date?.slice(0,7)===curMK;
-    const dok=fd==="全部"||p.date?.slice(0,10)===fd;
-    const sok=!q||[p.vendorName,p.itemName,p.itemBrand,p.itemVariant,p.note].filter(Boolean).join(" ").toLowerCase().includes(q.toLowerCase());
-    return mok&&dok&&sok;
-  });
+  const filtered=purchases.filter(p=>p.date?.slice(0,7)===curMK&&(fd==="全部"||p.date?.slice(0,10)===fd));
   const byVendor=filtered.reduce((acc,p)=>{const k=p.vendorName||p.vendor||"未知廠商";if(!acc[k])acc[k]={total:0,rows:[]};acc[k].total+=p.amount;acc[k].rows.push(p);return acc;},{});
   const byItem=filtered.reduce((acc,p)=>{const k=p.itemName||p.item||"未分類";if(!acc[k])acc[k]={total:0,qty:0};acc[k].total+=p.amount;acc[k].qty+=(Number(p.qty)||1);return acc;},{});
   const grandTotal=filtered.reduce((a,p)=>a+p.amount,0);
@@ -1230,14 +1280,13 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
         )}
       </Card>
 
-      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:8,marginBottom:12}}>
         <select value={fy} onChange={e=>{setFy(Number(e.target.value));setFd("全部");}} style={selBase}>{Array.from({length:nowYM().y-2025+2},(_,i)=>nowYM().y+1-i).filter(y=>y>=2025).map(y=><option key={y} value={y}>{y}年</option>)}</select>
         <select value={fm} onChange={e=>{setFm(Number(e.target.value));setFd("全部");}} style={selBase}>{MZ.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select>
         <select value={fd} onChange={e=>setFd(e.target.value)} style={selBase}>
           <option value="全部">全部</option>
           {[...new Set(purchases.filter(p=>p.date?.slice(0,7)===curMK).map(p=>p.date?.slice(0,10)).filter(Boolean))].sort().reverse().map(d=><option key={d} value={d}>{d.slice(8)}日</option>)}
         </select>
-        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="搜尋廠商/品項/型號…" style={{flex:1,minWidth:120,background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
       </div>
 
       <Card>
