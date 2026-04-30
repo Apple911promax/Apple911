@@ -797,8 +797,11 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
         {purOpen&&(()=>{
           const q=purSearch.toLowerCase();
           const usedIds=new Set(items.filter(i=>i.id.startsWith("pur_")).map(i=>i.id.replace("pur_","")));
+          const usedNames=new Set(items.map(i=>i.name.toLowerCase()));
           const results=(purchases||[]).filter(p=>{
             if(usedIds.has(p.id)) return false;
+            const pName=[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join(" ").toLowerCase();
+            if(usedNames.has(pName)) return false;
             if(!q) return true;
             return [p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase().includes(q);
           }).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);
