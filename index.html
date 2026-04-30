@@ -1511,7 +1511,24 @@ function InventoryPage({stock,catalog,setCatalog,purchases}) {
       {/* 進貨記錄彈窗 */}
       {stockModal&&(()=>{
         const {cat,brand,model}=stockModal;
-        const recs=(purchases||[]).filter(p=>p.itemCat===cat&&p.itemBrand===brand&&p.itemVariant===model).sort((a,b)=>b.date.localeCompare(a.date));
+        // 取得 stockId（可能是自訂的通用 ID）
+        const cats2=Array.isArray(catalog.purchaseCategories)?catalog.purchaseCategories:[];
+        const catObj2=cats2.find(c=>c.cat===cat);
+        const brandObj2=(catObj2?.brands||[]).find(b=>b.brand===brand);
+        const serObj2=(brandObj2?.series||[]).find(s=>s.models?.includes(model));
+        const stockIds2=serObj2?.stockIds||{};
+        const defaultKey=cat+"__"+brand+"__"+model;
+        const stockId2=stockIds2[model]||defaultKey;
+        // 找出所有共用這個 stockId 的 model
+        const allModels=[model];
+        (brandObj2?.series||[]).forEach(s=>(s.models||[]).forEach(m=>{if(m!==model&&(s.stockIds||{})[m]===stockId2)allModels.push(m);}));
+        // 篩選進貨記錄：符合任一共用型號，或 itemCat+itemBrand 符合但 itemVariant 為空（舊資料）
+        const recs=(purchases||[]).filter(p=>{
+          if(p.itemCat!==cat) return false;
+          if(p.itemBrand&&p.itemBrand!==brand) return false;
+          if(!p.itemVariant) return p.itemCat===cat; // 舊格式無型號
+          return allModels.includes(p.itemVariant);
+        }).sort((a,b)=>b.date.localeCompare(a.date));
         return(
           <div onClick={()=>setStockModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
             <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f3c",border:`1.5px solid ${C.borderHi}`,borderRadius:16,padding:20,width:"100%",maxWidth:480,maxHeight:"80vh",overflowY:"auto"}}>
