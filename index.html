@@ -1153,7 +1153,7 @@ function CartItem({x, onUpdate, onRemove}) {
   );
 }
 
-function PurchasesPage({purchases,setPurchases,catalog,stock}) {
+function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
   const [fy,setFy] = useState(nowYM().y);
   const [fm,setFm] = useState(nowYM().m);
   const [form,setForm] = useState({date:today(),vendor:"",customVendor:"",itemCat:"",itemBrand:"",itemSeries:"",itemVariant:"",_customVariant:"",qty:"1",amount:"",note:""});
@@ -1371,6 +1371,13 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
                           <span style={{color:C.textDim,fontSize:11}}>單價：<span style={{color:C.green,fontWeight:700}}>{fmt(Math.round(p.amount/(p.qty||1)))}</span></span>
                           {p.note&&<span style={{color:C.textDim,fontSize:11}}>· {p.note}</span>}
                         </div>
+                        {(()=>{
+                          const usages=(orders||[]).flatMap(o=>(o.items||[]).filter(i=>{const pid=i.purId||(i.id.startsWith("pur_")?i.id.replace(/^pur_/,"").replace(/_\d+$/,""):null);return pid===p.id;}).map(()=>({date:o.date,model:o.modelName||o.modelFree||"",orderId:o.id})));
+                          if(!usages.length) return null;
+                          return <div style={{marginTop:4,display:"flex",flexWrap:"wrap",gap:4}}>
+                            {usages.map((u,i)=><span key={i} style={{fontSize:10,color:C.green,background:"rgba(0,180,80,0.12)",border:"1px solid rgba(0,180,80,0.3)",borderRadius:5,padding:"1px 6px"}}>✓ 已用 {u.date}{u.model?" · "+u.model:""}</span>)}
+                          </div>;
+                        })()}
                       </div>
                       <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
                         <span style={{color:C.text,fontWeight:700,fontSize:14}}>{fmt(p.amount)}</span>
@@ -2914,7 +2921,7 @@ function App() {
       {/* Content */}
       <div style={{padding:"16px 14px 32px",position:"relative",zIndex:1}}>
         {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases}/>}
-        {page==="purchases"&&<PurchasesPage purchases={purchases} setPurchases={setPur} catalog={catalog} stock={stock}/>}
+        {page==="purchases"&&<PurchasesPage purchases={purchases} setPurchases={setPur} catalog={catalog} stock={stock} orders={orders}/>}
         {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases}/>}
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
         {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses}/>}
