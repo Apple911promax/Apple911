@@ -1091,6 +1091,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   const [form,setForm] = useState({date:today(),vendor:"",customVendor:"",itemCat:"",itemBrand:"",itemSeries:"",itemVariant:"",_customVariant:"",qty:"1",amount:"",note:""});
   const [cart,setCart] = useState([]); // 購物車暫存
   const [fd,setFd] = useState("全部");
+  const [q,setQ] = useState("");
   const [editId,setEditId] = useState(null);
   const [editForm,setEditForm] = useState(null);
 
@@ -1130,13 +1131,17 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   function saveEdit(){
     if(!editForm?.amount)return;
     const itemVariant=editForm.itemVariant==="__custom"?(editForm._customVariant||""):editForm.itemVariant;
-    const vendorName=editForm.vendor==="_custom"?(editForm.vendorName||""):editForm.vendor;
-    const next=purchases.map(p=>p.id===editId?{...editForm,amount:Number(editForm.amount),qty:Number(editForm.qty)||1,itemVariant,vendorName}:p);
+    const next=purchases.map(p=>p.id===editId?{...editForm,amount:Number(editForm.amount),qty:Number(editForm.qty)||1,itemVariant}:p);
     setPurchases(next);save(SK.purchases,next);setEditId(null);setEditForm(null);
   }
 
   const curMK=mkey(fy,fm);
-  const filtered=purchases.filter(p=>p.date?.slice(0,7)===curMK&&(fd==="全部"||p.date?.slice(0,10)===fd));
+  const filtered=purchases.filter(p=>{
+    const mok=p.date?.slice(0,7)===curMK;
+    const dok=fd==="全部"||p.date?.slice(0,10)===fd;
+    const sok=!q||[p.vendorName,p.itemName,p.itemBrand,p.itemVariant,p.note].filter(Boolean).join(" ").toLowerCase().includes(q.toLowerCase());
+    return mok&&dok&&sok;
+  });
   const byVendor=filtered.reduce((acc,p)=>{const k=p.vendorName||p.vendor||"未知廠商";if(!acc[k])acc[k]={total:0,rows:[]};acc[k].total+=p.amount;acc[k].rows.push(p);return acc;},{});
   const byItem=filtered.reduce((acc,p)=>{const k=p.itemName||p.item||"未分類";if(!acc[k])acc[k]={total:0,qty:0};acc[k].total+=p.amount;acc[k].qty+=(Number(p.qty)||1);return acc;},{});
   const grandTotal=filtered.reduce((a,p)=>a+p.amount,0);
@@ -1225,13 +1230,14 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
         )}
       </Card>
 
-      <div style={{display:"flex",gap:8,marginBottom:12}}>
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
         <select value={fy} onChange={e=>{setFy(Number(e.target.value));setFd("全部");}} style={selBase}>{Array.from({length:nowYM().y-2025+2},(_,i)=>nowYM().y+1-i).filter(y=>y>=2025).map(y=><option key={y} value={y}>{y}年</option>)}</select>
         <select value={fm} onChange={e=>{setFm(Number(e.target.value));setFd("全部");}} style={selBase}>{MZ.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select>
         <select value={fd} onChange={e=>setFd(e.target.value)} style={selBase}>
           <option value="全部">全部</option>
           {[...new Set(purchases.filter(p=>p.date?.slice(0,7)===curMK).map(p=>p.date?.slice(0,10)).filter(Boolean))].sort().reverse().map(d=><option key={d} value={d}>{d.slice(8)}日</option>)}
         </select>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="搜尋廠商/品項/型號…" style={{flex:1,minWidth:120,background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
       </div>
 
       <Card>
@@ -1253,12 +1259,6 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
                         <Input label="總金額" type="number" value={editForm.amount} onChange={e=>setEditForm(f=>({...f,amount:e.target.value}))} style={{marginBottom:0}}/>
                         <Input label="數量" type="number" value={editForm.qty} onChange={e=>setEditForm(f=>({...f,qty:e.target.value}))} style={{marginBottom:0}}/>
                       </div>
-                      <Sel label="廠商" value={editForm.vendor||""} onChange={e=>setEditForm(f=>({...f,vendor:e.target.value,vendorName:e.target.value==="_custom"?f.vendorName:(e.target.value||"")}))}>
-                        <option value="">選擇廠商</option>
-                        {(catalog.vendors||[]).map(v=><option key={v} value={v}>{v}</option>)}
-                        <option value="_custom">✏️ 手動輸入廠商</option>
-                      </Sel>
-                      {editForm.vendor==="_custom"&&<Input placeholder="廠商名稱" value={editForm.vendorName||""} onChange={e=>setEditForm(f=>({...f,vendorName:e.target.value}))} style={{marginBottom:6}}/>}
                       {(()=>{
                         const catObj=cats.find(x=>x.cat===editForm.itemCat);
                         const brands=catObj?.brands||[];
