@@ -1086,7 +1086,12 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
         </Sel>
         {form.vendor==="_custom"&&<Input placeholder="廠商名稱" value={form.customVendor} onChange={e=>setForm(f=>({...f,customVendor:e.target.value}))}/>}
 
-        <Sel label="① 零件品項" value={form.itemCat} onChange={e=>setForm(f=>({...f,itemCat:e.target.value,itemBrand:"",itemSeries:"",itemVariant:""}))}>
+        <Sel label="① 零件品項" value={form.itemCat} onChange={e=>{
+                const selCat=e.target.value;
+                const catDef=cats.find(x=>x.cat===selCat);
+                const defVendor=catDef?.defaultVendor||"";
+                setForm(f=>({...f,itemCat:selCat,itemBrand:"",itemSeries:"",itemVariant:"",vendor:defVendor||f.vendor}));
+              }}>
           <option value="">選擇品項</option>
           {cats.map(({cat})=><option key={cat} value={cat}>{cat}</option>)}
           <option value="__custom">✏️ 手動輸入品項名稱</option>
@@ -1231,6 +1236,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
 
 // ─── INVENTORY PAGE ───────────────────────────────────────────────────────────
 function InventoryPage({stock,catalog,setCatalog}) {
+  window.__vendorList__ = catalog.vendors||DEF.vendors;
   const [filterCat,setFilterCat]     = useState("全部");
   const [collapsed,setCollapsed]     = useState({});
   const [managing,setManaging]       = useState(false);
@@ -1434,6 +1440,11 @@ function InvCatEditor({catObj,ci,cats,updateCats,stock,tog,collapsed}) {
     <div style={{width:"100%"}} onClick={e=>e.stopPropagation()}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:isCol?0:8}}>
         <EditableText value={catObj.cat} onSave={v=>{const nc=[...cats];nc[ci]={...catObj,cat:v};updateCats(nc);}}/>
+        {/* 預設廠商 */}
+        <select value={catObj.defaultVendor||""} onChange={e=>{const nc=[...cats];nc[ci]={...catObj,defaultVendor:e.target.value};updateCats(nc);}} style={{background:"rgba(0,60,140,0.4)",border:"1px solid rgba(0,150,255,0.3)",borderRadius:6,color:catObj.defaultVendor?C.gold:C.textDim,fontSize:10,padding:"2px 6px",fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>
+          <option value="">廠商</option>
+          {(window.__vendorList__||[]).map(v=><option key={v} value={v}>{v}</option>)}
+        </select>
         {/* 複製按鈕 */}
         <button onClick={()=>{
           const newName=prompt(`複製「${catObj.cat}」的結構，新品項名稱：`,"");
