@@ -1079,13 +1079,6 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
       <Card hi>
         <H>新增進貨記錄</H>
         <DatePicker label="日期" value={form.date} onChange={v=>setForm(f=>({...f,date:v}))}/>
-        <Sel label="廠商" value={form.vendor} onChange={e=>setForm(f=>({...f,vendor:e.target.value}))}>
-          <option value="">選擇廠商</option>
-          {(catalog.vendors||[]).map(v=><option key={v} value={v}>{v}</option>)}
-          <option value="_custom">✏️ 手動輸入廠商</option>
-        </Sel>
-        {form.vendor==="_custom"&&<Input placeholder="廠商名稱" value={form.customVendor} onChange={e=>setForm(f=>({...f,customVendor:e.target.value}))}/>}
-
         <Sel label="① 零件品項" value={form.itemCat} onChange={e=>{
                 const selCat=e.target.value;
                 const catDef=cats.find(x=>x.cat===selCat);
@@ -1099,6 +1092,13 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
         {form.itemCat==="__custom"&&(
           <Input placeholder="輸入品項名稱（如：螢幕、前鏡頭...）" value={form._customCat||""} onChange={e=>setForm(f=>({...f,_customCat:e.target.value}))}/>
         )}
+
+        <Sel label="廠商" value={form.vendor} onChange={e=>setForm(f=>({...f,vendor:e.target.value}))}>
+          <option value="">選擇廠商</option>
+          {(catalog.vendors||[]).map(v=><option key={v} value={v}>{v}</option>)}
+          <option value="_custom">✏️ 手動輸入廠商</option>
+        </Sel>
+        {form.vendor==="_custom"&&<Input placeholder="廠商名稱" value={form.customVendor} onChange={e=>setForm(f=>({...f,customVendor:e.target.value}))}/>}
         {form.itemCat&&(()=>{
           const catObj=cats.find(x=>x.cat===form.itemCat);
           const brands=catObj?.brands||[];
