@@ -1313,9 +1313,10 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
 }
 
 // ─── INVENTORY PAGE ───────────────────────────────────────────────────────────
-function InventoryPage({stock,catalog,setCatalog}) {
+function InventoryPage({stock,catalog,setCatalog,purchases}) {
   window.__vendorList__ = catalog.vendors||DEF.vendors;
   const [filterCat,setFilterCat]     = useState("全部");
+  const [stockModal,setStockModal]   = useState(null); // {cat,brand,model}
   const [collapsed,setCollapsed]     = useState({});
   const [managing,setManaging]       = useState(false);
   const [newCatName,setNewCatName]   = useState("");
@@ -1480,7 +1481,7 @@ function InventoryPage({stock,catalog,setCatalog}) {
                                             <div style={{color:sk.totalIn===0?C.textDim:C.text,fontSize:12,padding:"5px 6px",display:"flex",alignItems:"center",gap:4}}>
                                               {m}{zero&&<span style={{color:C.red,fontSize:9,fontWeight:800}}>缺</span>}{low&&<span style={{color:C.orange,fontSize:9}}>⚠️</span>}
                                             </div>
-                                            <div style={{color:sk.totalIn>0?C.green:C.textDim,fontSize:13,fontWeight:700,textAlign:"center",padding:"5px 0"}}>{sk.totalIn>0?sk.totalIn:"-"}</div>
+                                            <div onClick={()=>sk.totalIn>0&&setStockModal({cat:catObj.cat,brand:bObj.brand,model:m})} style={{color:sk.totalIn>0?C.green:C.textDim,fontSize:13,fontWeight:700,textAlign:"center",padding:"5px 0",cursor:sk.totalIn>0?"pointer":"default",textDecoration:sk.totalIn>0?"underline dotted":"none"}}>{sk.totalIn>0?sk.totalIn:"-"}</div>
                                             <div style={{color:C.textMid,fontSize:13,textAlign:"center",padding:"5px 0"}}>{sk.totalUsed>0?sk.totalUsed:"-"}</div>
                                             <div style={{color:zero?C.red:low?C.orange:sk.totalIn>0?C.accent:C.textDim,fontSize:14,fontWeight:800,textAlign:"center",padding:"5px 0"}}>{sk.totalIn>0?sk.stock:"-"}</div>
                                           </React.Fragment>
@@ -1506,6 +1507,46 @@ function InventoryPage({stock,catalog,setCatalog}) {
       {cats.length===0&&(
         <Card><div style={{color:C.textDim,textAlign:"center",padding:24}}>點右上角「⚙️ 管理」開始新增品項</div></Card>
       )}
+
+      {/* 進貨記錄彈窗 */}
+      {stockModal&&(()=>{
+        const {cat,brand,model}=stockModal;
+        const recs=(purchases||[]).filter(p=>p.itemCat===cat&&p.itemBrand===brand&&p.itemVariant===model).sort((a,b)=>b.date.localeCompare(a.date));
+        return(
+          <div onClick={()=>setStockModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f3c",border:`1.5px solid ${C.borderHi}`,borderRadius:16,padding:20,width:"100%",maxWidth:480,maxHeight:"80vh",overflowY:"auto"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div>
+                  <div style={{color:C.gold,fontWeight:800,fontSize:15}}>{cat}</div>
+                  <div style={{color:C.textMid,fontSize:12}}>{brand} · {model}</div>
+                </div>
+                <button onClick={()=>setStockModal(null)} style={{background:"none",border:"none",color:C.textDim,fontSize:20,cursor:"pointer"}}>✕</button>
+              </div>
+              {recs.length===0
+                ?<div style={{color:C.textDim,textAlign:"center",padding:20}}>找不到進貨記錄</div>
+                :recs.map(p=>(
+                  <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+                    <div>
+                      <div style={{color:C.text,fontSize:13,fontWeight:700}}>{p.date}</div>
+                      <div style={{display:"flex",gap:10,marginTop:3}}>
+                        {p.vendorName&&<span style={{color:C.gold,fontSize:11}}>📦 {p.vendorName}</span>}
+                        <span style={{color:C.textDim,fontSize:11}}>數量：<span style={{color:C.text,fontWeight:700}}>{p.qty||1}</span></span>
+                        <span style={{color:C.textDim,fontSize:11}}>單價：<span style={{color:C.green,fontWeight:700}}>{fmt(Math.round(p.amount/(p.qty||1)))}</span></span>
+                      </div>
+                      {p.note&&<div style={{color:C.textDim,fontSize:11,marginTop:2}}>備註：{p.note}</div>}
+                    </div>
+                    <div style={{color:C.green,fontWeight:800,fontSize:14,flexShrink:0}}>{fmt(p.amount)}</div>
+                  </div>
+                ))
+              }
+              <div style={{marginTop:12,padding:"8px 0",borderTop:`1px solid ${C.borderHi}`,display:"flex",justifyContent:"space-between"}}>
+                <span style={{color:C.textDim,fontSize:12}}>共 {recs.reduce((a,p)=>a+(p.qty||1),0)} 件</span>
+                <span style={{color:C.gold,fontWeight:800}}>{fmt(recs.reduce((a,p)=>a+p.amount,0))}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -2739,7 +2780,7 @@ function App() {
       <div style={{padding:"16px 14px 32px",position:"relative",zIndex:1}}>
         {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases}/>}
         {page==="purchases"&&<PurchasesPage purchases={purchases} setPurchases={setPur} catalog={catalog} stock={stock}/>}
-        {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}}/>}
+        {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases}/>}
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
         {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses}/>}
         {page==="lookup"   &&<LookupPage/>}
