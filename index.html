@@ -1130,7 +1130,8 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   function saveEdit(){
     if(!editForm?.amount)return;
     const itemVariant=editForm.itemVariant==="__custom"?(editForm._customVariant||""):editForm.itemVariant;
-    const next=purchases.map(p=>p.id===editId?{...editForm,amount:Number(editForm.amount),qty:Number(editForm.qty)||1,itemVariant}:p);
+    const vendorName=editForm.vendor==="_custom"?(editForm.vendorName||""):editForm.vendor;
+    const next=purchases.map(p=>p.id===editId?{...editForm,amount:Number(editForm.amount),qty:Number(editForm.qty)||1,itemVariant,vendorName}:p);
     setPurchases(next);save(SK.purchases,next);setEditId(null);setEditForm(null);
   }
 
@@ -1252,6 +1253,12 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
                         <Input label="總金額" type="number" value={editForm.amount} onChange={e=>setEditForm(f=>({...f,amount:e.target.value}))} style={{marginBottom:0}}/>
                         <Input label="數量" type="number" value={editForm.qty} onChange={e=>setEditForm(f=>({...f,qty:e.target.value}))} style={{marginBottom:0}}/>
                       </div>
+                      <Sel label="廠商" value={editForm.vendor||""} onChange={e=>setEditForm(f=>({...f,vendor:e.target.value,vendorName:e.target.value==="_custom"?f.vendorName:(e.target.value||"")}))}>
+                        <option value="">選擇廠商</option>
+                        {(catalog.vendors||[]).map(v=><option key={v} value={v}>{v}</option>)}
+                        <option value="_custom">✏️ 手動輸入廠商</option>
+                      </Sel>
+                      {editForm.vendor==="_custom"&&<Input placeholder="廠商名稱" value={editForm.vendorName||""} onChange={e=>setEditForm(f=>({...f,vendorName:e.target.value}))} style={{marginBottom:6}}/>}
                       {(()=>{
                         const catObj=cats.find(x=>x.cat===editForm.itemCat);
                         const brands=catObj?.brands||[];
