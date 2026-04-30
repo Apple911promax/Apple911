@@ -1066,6 +1066,7 @@ function CartItem({x, onUpdate, onRemove}) {
               <span style={{color:C.text,fontSize:13,fontWeight:700}}>{x.itemName}</span>
               {(x.itemBrand||x.itemVariant)&&<span style={{color:C.accent,fontSize:11,background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:4,padding:"1px 5px"}}>{[x.itemBrand,x.itemVariant].filter(Boolean).join(" ")}</span>}
               {x.vendorName&&<span style={{color:C.gold,fontSize:11}}>📦 {x.vendorName}</span>}
+              {x.date&&<span style={{color:C.textDim,fontSize:11}}>🗓 {x.date}</span>}
             </div>
             <div style={{display:"flex",gap:10,marginTop:3}}>
               <span style={{color:C.textDim,fontSize:11}}>數量：<span style={{color:C.text,fontWeight:700}}>{x.qty}</span></span>
@@ -1128,7 +1129,8 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   function startEdit(p){setEditId(p.id);setEditForm({...p,amount:String(p.amount),qty:String(p.qty||1)});}
   function saveEdit(){
     if(!editForm?.amount)return;
-    const next=purchases.map(p=>p.id===editId?{...editForm,amount:Number(editForm.amount),qty:Number(editForm.qty)||1}:p);
+    const itemVariant=editForm.itemVariant==="__custom"?(editForm._customVariant||""):editForm.itemVariant;
+    const next=purchases.map(p=>p.id===editId?{...editForm,amount:Number(editForm.amount),qty:Number(editForm.qty)||1,itemVariant}:p);
     setPurchases(next);save(SK.purchases,next);setEditId(null);setEditForm(null);
   }
 
@@ -1245,11 +1247,43 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
                 <div key={p.id}>
                   {editId===p.id?(
                     <div style={{padding:"10px 0 10px 14px",borderBottom:`1px solid ${C.border}`,background:"rgba(0,60,140,0.15)",borderRadius:8,margin:"4px 0"}}>
+                      <DatePicker label="日期" value={editForm.date||today()} onChange={v=>setEditForm(f=>({...f,date:v}))}/>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
                         <Input label="總金額" type="number" value={editForm.amount} onChange={e=>setEditForm(f=>({...f,amount:e.target.value}))} style={{marginBottom:0}}/>
                         <Input label="數量" type="number" value={editForm.qty} onChange={e=>setEditForm(f=>({...f,qty:e.target.value}))} style={{marginBottom:0}}/>
                       </div>
-                      <Input label="型號" value={editForm.itemVariant||""} onChange={e=>setEditForm(f=>({...f,itemVariant:e.target.value}))} style={{marginBottom:6}}/>
+                      {(()=>{
+                        const catObj=cats.find(x=>x.cat===editForm.itemCat);
+                        const brands=catObj?.brands||[];
+                        const brandObj=brands.find(b=>b.brand===editForm.itemBrand);
+                        const series=brandObj?.series||[];
+                        const serObj=series.find(s=>s.name===editForm.itemSeries);
+                        const models=serObj?.models||[];
+                        return(<>
+                          {brands.length>0&&(
+                            <Sel label="品牌" value={editForm.itemBrand||""} onChange={e=>setEditForm(f=>({...f,itemBrand:e.target.value,itemSeries:"",itemVariant:""}))}>
+                              <option value="">選擇品牌</option>
+                              {brands.map(b=><option key={b.brand} value={b.brand}>{b.brand}</option>)}
+                            </Sel>
+                          )}
+                          {editForm.itemBrand&&series.length>0&&(
+                            <Sel label="系列" value={editForm.itemSeries||""} onChange={e=>setEditForm(f=>({...f,itemSeries:e.target.value,itemVariant:""}))}>
+                              <option value="">選擇系列</option>
+                              {series.map(s=><option key={s.name} value={s.name}>{s.name}</option>)}
+                            </Sel>
+                          )}
+                          {editForm.itemBrand&&editForm.itemSeries&&(
+                            <Sel label="型號" value={editForm.itemVariant||""} onChange={e=>setEditForm(f=>({...f,itemVariant:e.target.value==="__custom"?e.target.value:e.target.value}))}>
+                              <option value="">選擇型號</option>
+                              {models.map(m=><option key={m} value={m}>{m}</option>)}
+                              <option value="__custom">✏️ 手動輸入</option>
+                            </Sel>
+                          )}
+                          {editForm.itemVariant==="__custom"&&(
+                            <Input placeholder="手動輸入型號" value={editForm._customVariant||""} onChange={e=>setEditForm(f=>({...f,_customVariant:e.target.value}))} style={{marginBottom:6}}/>
+                          )}
+                        </>);
+                      })()}
                       <Input label="備註" value={editForm.note||""} onChange={e=>setEditForm(f=>({...f,note:e.target.value}))} style={{marginBottom:6}}/>
                       <div style={{display:"flex",gap:6}}>
                         <Btn sm onClick={saveEdit}>✓ 儲存</Btn>
