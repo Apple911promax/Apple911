@@ -1525,8 +1525,10 @@ function InventoryPage({stock,catalog,setCatalog,purchases}) {
         // 篩選進貨記錄：符合任一共用型號，或 itemCat+itemBrand 符合但 itemVariant 為空（舊資料）
         const recs=(purchases||[]).filter(p=>{
           if(p.itemCat!==cat) return false;
-          if(p.itemBrand&&p.itemBrand!==brand) return false;
-          if(!p.itemVariant) return p.itemCat===cat; // 舊格式無型號
+          // 舊資料：沒有 itemBrand/itemVariant，只靠 itemCat 比對
+          if(!p.itemBrand && !p.itemVariant) return true;
+          if(p.itemBrand && p.itemBrand!==brand) return false;
+          if(!p.itemVariant) return true;
           return allModels.includes(p.itemVariant);
         }).sort((a,b)=>b.date.localeCompare(a.date));
         return(
