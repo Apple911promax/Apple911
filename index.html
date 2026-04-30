@@ -1040,6 +1040,50 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
 }
 
 // ─── PURCHASES PAGE ───────────────────────────────────────────────────────────
+function CartItem({x, onUpdate, onRemove}) {
+  const [editing, setEditing] = useState(false);
+  const [ef, setEf] = useState({qty:String(x.qty),amount:String(x.amount),note:x.note||""});
+  return (
+    <div style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+      {editing?(
+        <div style={{background:"rgba(0,40,100,0.3)",borderRadius:8,padding:"8px 10px"}}>
+          <div style={{color:C.text,fontSize:12,fontWeight:700,marginBottom:6}}>{x.itemName} {[x.itemBrand,x.itemVariant].filter(Boolean).join(" ")}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
+            <Input label="數量" type="number" value={ef.qty} onChange={e=>setEf(f=>({...f,qty:e.target.value}))} style={{marginBottom:0}}/>
+            <Input label="總金額 NT$" type="number" value={ef.amount} onChange={e=>setEf(f=>({...f,amount:e.target.value}))} style={{marginBottom:0}}/>
+          </div>
+          {ef.qty&&ef.amount&&Number(ef.qty)>1&&<div style={{color:C.textDim,fontSize:10,marginBottom:4}}>單價：{fmt(Math.round(Number(ef.amount)/Number(ef.qty)))} / 件</div>}
+          <Input label="備註" value={ef.note} onChange={e=>setEf(f=>({...f,note:e.target.value}))} style={{marginBottom:6}}/>
+          <div style={{display:"flex",gap:6}}>
+            <Btn sm onClick={()=>{onUpdate({qty:Number(ef.qty)||1,amount:Number(ef.amount),note:ef.note});setEditing(false);}}>✓ 儲存</Btn>
+            <Btn v="ghost" sm onClick={()=>setEditing(false)}>取消</Btn>
+          </div>
+        </div>
+      ):(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+              <span style={{color:C.text,fontSize:13,fontWeight:700}}>{x.itemName}</span>
+              {(x.itemBrand||x.itemVariant)&&<span style={{color:C.accent,fontSize:11,background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:4,padding:"1px 5px"}}>{[x.itemBrand,x.itemVariant].filter(Boolean).join(" ")}</span>}
+              {x.vendorName&&<span style={{color:C.gold,fontSize:11}}>📦 {x.vendorName}</span>}
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:3}}>
+              <span style={{color:C.textDim,fontSize:11}}>數量：<span style={{color:C.text,fontWeight:700}}>{x.qty}</span></span>
+              <span style={{color:C.textDim,fontSize:11}}>單價：<span style={{color:C.green,fontWeight:700}}>{fmt(Math.round(x.amount/x.qty))}</span></span>
+              {x.note&&<span style={{color:C.textDim,fontSize:11}}>· {x.note}</span>}
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+            <span style={{color:C.green,fontWeight:800,fontSize:14}}>{fmt(x.amount)}</span>
+            <button onClick={()=>{setEf({qty:String(x.qty),amount:String(x.amount),note:x.note||""});setEditing(true);}} style={{background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:6,color:C.accent,cursor:"pointer",fontSize:12,padding:"4px 8px",fontFamily:"inherit",fontWeight:700}}>✏️</button>
+            <button onClick={onRemove} style={{background:"rgba(255,50,80,0.2)",border:"none",borderRadius:6,color:C.red,cursor:"pointer",fontSize:12,padding:"4px 8px",fontFamily:"inherit",fontWeight:700}}>✕</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PurchasesPage({purchases,setPurchases,catalog,stock}) {
   const [fy,setFy] = useState(nowYM().y);
   const [fm,setFm] = useState(nowYM().m);
@@ -1170,49 +1214,9 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
               <span style={{color:C.accent,fontWeight:800,fontSize:13}}>📋 待送出清單（{cart.length} 項）</span>
               <span style={{color:C.gold,fontWeight:800}}>{fmt(cart.reduce((a,x)=>a+x.amount,0))}</span>
             </div>
-            {cart.map((x,i)=>{
-              const [editing,setEditing]=React.useState(false);
-              const [ef,setEf]=React.useState({qty:String(x.qty),amount:String(x.amount),note:x.note||""});
-              return (
-              <div key={x.id} style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
-                {editing?(
-                  <div style={{background:"rgba(0,40,100,0.3)",borderRadius:8,padding:"8px 10px"}}>
-                    <div style={{color:C.text,fontSize:12,fontWeight:700,marginBottom:6}}>{x.itemName} {[x.itemBrand,x.itemVariant].filter(Boolean).join(" ")}</div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
-                      <Input label="數量" type="number" value={ef.qty} onChange={e=>setEf(f=>({...f,qty:e.target.value}))} style={{marginBottom:0}}/>
-                      <Input label="總金額 NT$" type="number" value={ef.amount} onChange={e=>setEf(f=>({...f,amount:e.target.value}))} style={{marginBottom:0}}/>
-                    </div>
-                    {ef.qty&&ef.amount&&Number(ef.qty)>1&&<div style={{color:C.textDim,fontSize:10,marginBottom:4}}>單價：{fmt(Math.round(Number(ef.amount)/Number(ef.qty)))} / 件</div>}
-                    <Input label="備註" value={ef.note} onChange={e=>setEf(f=>({...f,note:e.target.value}))} style={{marginBottom:6}}/>
-                    <div style={{display:"flex",gap:6}}>
-                      <Btn sm onClick={()=>{setCart(c=>c.map(ci=>ci.id===x.id?{...ci,qty:Number(ef.qty)||1,amount:Number(ef.amount),note:ef.note}:ci));setEditing(false);}}>✓ 儲存</Btn>
-                      <Btn v="ghost" sm onClick={()=>setEditing(false)}>取消</Btn>
-                    </div>
-                  </div>
-                ):(
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{flex:1}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                        <span style={{color:C.text,fontSize:13,fontWeight:700}}>{x.itemName}</span>
-                        {(x.itemBrand||x.itemVariant)&&<span style={{color:C.accent,fontSize:11,background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:4,padding:"1px 5px"}}>{[x.itemBrand,x.itemVariant].filter(Boolean).join(" ")}</span>}
-                        {x.vendorName&&<span style={{color:C.gold,fontSize:11}}>📦 {x.vendorName}</span>}
-                      </div>
-                      <div style={{display:"flex",gap:10,marginTop:3}}>
-                        <span style={{color:C.textDim,fontSize:11}}>數量：<span style={{color:C.text,fontWeight:700}}>{x.qty}</span></span>
-                        <span style={{color:C.textDim,fontSize:11}}>單價：<span style={{color:C.green,fontWeight:700}}>{fmt(Math.round(x.amount/x.qty))}</span></span>
-                        {x.note&&<span style={{color:C.textDim,fontSize:11}}>· {x.note}</span>}
-                      </div>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                      <span style={{color:C.green,fontWeight:800,fontSize:14}}>{fmt(x.amount)}</span>
-                      <button onClick={()=>{setEf({qty:String(x.qty),amount:String(x.amount),note:x.note||""});setEditing(true);}} style={{background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:6,color:C.accent,cursor:"pointer",fontSize:12,padding:"4px 8px",fontFamily:"inherit",fontWeight:700}}>✏️</button>
-                      <button onClick={()=>removeFromCart(x.id)} style={{background:"rgba(255,50,80,0.2)",border:"none",borderRadius:6,color:C.red,cursor:"pointer",fontSize:12,padding:"4px 8px",fontFamily:"inherit",fontWeight:700}}>✕</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              );
-            })}
+            {cart.map((x)=>(
+              <CartItem key={x.id} x={x} onUpdate={updated=>setCart(c=>c.map(ci=>ci.id===x.id?{...ci,...updated}:ci))} onRemove={()=>removeFromCart(x.id)}/>
+            ))}
             <Btn onClick={submitCart} style={{marginTop:10,width:"100%",background:`linear-gradient(135deg,${C.green},#00a060)`}}>✅ 確認送出全部進貨</Btn>
           </div>
         )}
