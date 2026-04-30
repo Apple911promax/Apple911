@@ -516,7 +516,7 @@ function Chips({options,selected,onToggle,getStyle,small}) {
 }
 
 // ─── REPAIR FORM ──────────────────────────────────────────────────────────────
-function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
+function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) {
   const [brand,setBrand]       = useState(editOrder?.brand||"");
   const [model,setModel]       = useState(editOrder?.model||"");
   const [modelFree,setModelFree]= useState(editOrder?.modelFree||"");
@@ -796,8 +796,13 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
         </div>
         {purOpen&&(()=>{
           const q=purSearch.toLowerCase();
-          const addedNames=new Set(items.map(i=>{const n=i.name.toLowerCase().replace(/\s+/g,"");return n;}));
-          const isAdded=p=>{const n=[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join("").toLowerCase().replace(/\s+/g,"");return addedNames.has(n);};
+          const usedInOrders=new Set((orders||[]).flatMap(o=>(o.items||[]).map(i=>i.id.startsWith("pur_")?i.id.replace("pur_",""):null)).filter(Boolean));
+          const addedNames=new Set(items.map(i=>i.name.toLowerCase().replace(/\s+/g,"")));
+          const isAdded=p=>{
+            if(usedInOrders.has(p.id)) return true;
+            const n=[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join("").toLowerCase().replace(/\s+/g,"");
+            return addedNames.has(n);
+          };
           const results=(purchases||[]).filter(p=>{
             if(!q) return true;
             return [p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase().includes(q);
@@ -1031,13 +1036,13 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
   if(view==="new") return (
     <div>
       <button onClick={()=>setView("list")} style={{color:C.accent,background:"none",border:"none",cursor:"pointer",fontSize:13,marginBottom:12,fontFamily:"inherit"}}>← 返回列表</button>
-      <RepairForm catalog={catalog} onSave={saveOrder} onCancel={()=>setView("list")} stock={stock} purchases={purchases}/>
+      <RepairForm catalog={catalog} onSave={saveOrder} onCancel={()=>setView("list")} stock={stock} purchases={purchases} orders={orders}/>
     </div>
   );
   if(view==="edit"&&edit) return (
     <div>
       <button onClick={()=>{setView("list");setEdit(null);}} style={{color:C.accent,background:"none",border:"none",cursor:"pointer",fontSize:13,marginBottom:12,fontFamily:"inherit"}}>← 返回列表</button>
-      <RepairForm catalog={catalog} onSave={saveOrder} onCancel={()=>{setView("list");setEdit(null);}} editOrder={edit} stock={stock} purchases={purchases}/>
+      <RepairForm catalog={catalog} onSave={saveOrder} onCancel={()=>{setView("list");setEdit(null);}} editOrder={edit} stock={stock} purchases={purchases} orders={orders}/>
     </div>
   );
 
