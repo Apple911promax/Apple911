@@ -960,7 +960,12 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
   }),[orders,mk,fd,q]);
 
   const totalRev=filtered.reduce((a,o)=>a+o.totalRevenue,0);
-  const totalProfit=filtered.reduce((a,o)=>a+o.profit,0);
+  const totalProfit=filtered.reduce((a,o)=>{
+    const isLP=o.payments&&o.payments.some(p=>p.toLowerCase().includes("line"));
+    const fee=isLP?(o.linePayFee!==undefined?o.linePayFee:Math.round((o.totalRevenue||0)*0.03)):0;
+    const tax=isLP?(o.linePayTax!==undefined?o.linePayTax:Math.round(fee*0.05)):0;
+    return a+(o.totalRevenue||0)-(o.totalCost||0)-fee-tax;
+  },0);
 
   if(view==="new") return (
     <div>
@@ -1004,7 +1009,13 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
               <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
                 <span style={{color:C.accent,fontSize:13,fontWeight:700}}>📅 {o.date}</span>
                 <span style={{color:C.accent,fontSize:13,fontWeight:700}}>{fmt(o.totalRevenue)}</span>
-                <span style={{color:o.profit>=0?C.green:C.red,fontSize:12,fontWeight:700}}>利潤 {o.profit>=0?"+":""}{fmt(o.profit)}</span>
+                {(()=>{
+                  const isLP=o.payments&&o.payments.some(p=>p.toLowerCase().includes("line"));
+                  const fee=isLP?(o.linePayFee!==undefined?o.linePayFee:Math.round((o.totalRevenue||0)*0.03)):0;
+                  const tax=isLP?(o.linePayTax!==undefined?o.linePayTax:Math.round(fee*0.05)):0;
+                  const realProfit=(o.totalRevenue||0)-(o.totalCost||0)-fee-tax;
+                  return <span style={{color:realProfit>=0?C.green:C.red,fontSize:12,fontWeight:700}}>利潤 {realProfit>=0?"+":""}{fmt(realProfit)}</span>;
+                })()}
               </div>
               {/* 品牌型號 */}
               <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:5}}>
@@ -2566,7 +2577,12 @@ function App() {
 
   const {y:ny,m:nm}=nowYM();
   const mRev =orders.filter(o=>o.date?.slice(0,7)===mkey(ny,nm)).reduce((a,o)=>a+o.totalRevenue,0);
-  const mProf=orders.filter(o=>o.date?.slice(0,7)===mkey(ny,nm)).reduce((a,o)=>a+o.profit,0);
+  const mProf=orders.filter(o=>o.date?.slice(0,7)===mkey(ny,nm)).reduce((a,o)=>{
+    const isLP=o.payments&&o.payments.some(p=>p.toLowerCase().includes("line"));
+    const fee=isLP?(o.linePayFee!==undefined?o.linePayFee:Math.round((o.totalRevenue||0)*0.03)):0;
+    const tax=isLP?(o.linePayTax!==undefined?o.linePayTax:Math.round(fee*0.05)):0;
+    return a+(o.totalRevenue||0)-(o.totalCost||0)-fee-tax;
+  },0);
   const lowCount = Object.values(stock).filter(x=>x.totalIn>0&&x.stock<=2).length;
   const NAV = role==="boss" ? NAV_ALL : NAV_STAFF;
 
