@@ -1538,6 +1538,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases}) {
                 <div>
                   <div style={{color:C.gold,fontWeight:800,fontSize:15}}>{cat}</div>
                   <div style={{color:C.textMid,fontSize:12}}>{brand} · {model}</div>
+                  <div style={{color:C.textDim,fontSize:10}}>stockId: {stockId2}</div>
                 </div>
                 <button onClick={()=>setStockModal(null)} style={{background:"none",border:"none",color:C.textDim,fontSize:20,cursor:"pointer"}}>✕</button>
               </div>
