@@ -649,11 +649,15 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
 
   const totalRevenue= Number(totalPrice)||0;
   const totalCost   = items.reduce((a,i)=>a+(Number(i.cost)||0)*(Number(i.qty)||1),0);
-  const profit      = totalRevenue-totalCost;
+  const isLinePay   = payments.some(p=>p.toLowerCase().includes("line"));
+  const linePayFee  = isLinePay ? Math.round(totalRevenue*0.03) : 0;
+  const linePayTax  = isLinePay ? Math.round(linePayFee*0.05) : 0;
+  const linePayTotal= linePayFee+linePayTax;
+  const profit      = totalRevenue-totalCost-linePayTotal;
 
   function handleSave(){
     if(items.length===0){alert("請至少新增一個維修或配件項目");return;}
-    onSave({id:editOrder?.id||uid(),date,brand,brandName,model,modelFree,modelName,customer,note,payments,vendors,items,photos,totalRevenue,totalCost,profit,createdAt:editOrder?.createdAt||Date.now()});
+    onSave({id:editOrder?.id||uid(),date,brand,brandName,model,modelFree,modelName,customer,note,payments,vendors,items,photos,totalRevenue,totalCost,linePayFee,linePayTax,linePayTotal,profit,createdAt:editOrder?.createdAt||Date.now()});
   }
 
   return (
@@ -871,6 +875,8 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
             <Stat label="收費總額" value={fmt(totalRevenue)} icon="💰"/>
             <Stat label="零件成本" value={fmt(totalCost)} color={C.orange} icon="📦"/>
+            {isLinePay&&<Stat label="Line Pay 手續費" value={fmt(linePayFee)} color={C.textDim} icon="💳"/>}
+            {isLinePay&&<Stat label="營業稅" value={fmt(linePayTax)} color={C.textDim} icon="🧾"/>}
             <Stat label="利潤" value={totalRevenue>0?(profit>=0?"+":"")+fmt(profit):"—"} color={totalRevenue>0?(profit>=0?C.green:C.red):C.textDim} icon="📈"/>
           </div>
         </Card>
@@ -1953,42 +1959,8 @@ function AdminPage({catalog,setCatalog,isBoss,orders,setOrders}) {
   });
   const [ni,setNi]=useState({name:"",cat:RCATS[0],defaultCost:"",defaultPrice:"",stockItem:""});
   const [nv,setNv]=useState(""); const [np,setNp]=useState(""); const [npi,setNpi]=useState(""); const [net,setNet]=useState("");
-  const [fixResult,setFixResult]=useState(null);
-  const [fixing,setFixing]=useState(false);
 
   function sc(next){setCatalog(next);save(SK.catalog,next);}
-
-  // 批次修正：把工單 modelName 開頭的「品牌名稱 + 空格」去掉
-  // 例如 "iPhone 12 Pro" → "12 Pro"，"Apple Watch SE" → "Watch SE"
-  function batchFixModelNames(){
-    if(!orders?.length){alert("目前沒有工單資料");return;}
-    const brandNames = (catalog.brands||[]).map(b=>b.name).filter(Boolean);
-    // 也加入常見前綴
-    const prefixes = [...new Set([...brandNames,"iPhone","iPad","Mac","Apple Watch","AirPods","Apple"])];
-    let fixedCount=0;
-    const next=orders.map(o=>{
-      let mn=o.modelName||"";
-      let changed=false;
-      for(const prefix of prefixes){
-        // 如果 modelName 是 "iPhone 12 Pro" 這樣，去掉 "iPhone " 前綴
-        if(mn.startsWith(prefix+" ")){
-          mn=mn.slice(prefix.length+1).trim();
-          changed=true;
-          break;
-        }
-      }
-      if(changed){fixedCount++;return{...o,modelName:mn};}
-      return o;
-    });
-    if(fixedCount===0){setFixResult({count:0,msg:"所有工單型號都已經是正確格式，不需要修正！"});return;}
-    setFixing(true);
-    Promise.resolve().then(()=>{
-      setOrders(next);
-      save(SK.orders,next);
-      setFixResult({count:fixedCount,msg:`已成功修正 ${fixedCount} 筆工單的型號名稱！`});
-      setFixing(false);
-    });
-  }
   function tryPin(){if(pin===ADMIN_PIN){setUnlocked(true);setPinErr(false);}else{setPinErr(true);setPin("");}}
 
   if(!unlocked) return (
@@ -2015,11 +1987,35 @@ function AdminPage({catalog,setCatalog,isBoss,orders,setOrders}) {
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{tb("brands","🏷 品牌/型號")}{tb("items","🛠 維修項目")}{tb("vendors","🏭 廠商/品項")}{tb("payments","💳 付款")}{tb("expenses","📋 支出類別")}{tb("batchfix","🔧 批次修正")}</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{tb("brands","🏷 品牌/型號")}{tb("items","🛠 維修項目")}{tb("vendors","🏭 廠商/品項")}{tb("payments","💳 付款")}{tb("expenses","📋 支出類別")}</div>
         <button onClick={()=>setUnlocked(false)} style={{color:C.textDim,background:"none",border:"none",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🔒 鎖定</button>
       </div>
 
       {tab==="brands"&&(<div>
+        {/* 一鍵修正 Line Pay 舊工單 */}
+        {(()=>{
+          const linepayOrders=(orders||[]).filter(o=>o.payments&&o.payments.some(p=>p.toLowerCase().includes("line"))&&!o.linePayFee);
+          if(linepayOrders.length===0) return null;
+          return (
+            <div style={{background:"rgba(255,180,0,0.1)",border:"1px solid rgba(255,180,0,0.4)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+              <div style={{color:C.gold,fontWeight:700,marginBottom:6}}>⚠️ 有 {linepayOrders.length} 筆 Line Pay 工單尚未計算手續費</div>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:10}}>手續費 3% + 營業稅 5%，自動從利潤扣除</div>
+              <Btn sm onClick={()=>{
+                const updated=(orders||[]).map(o=>{
+                  if(!(o.payments&&o.payments.some(p=>p.toLowerCase().includes("line")))) return o;
+                  if(o.linePayFee) return o;
+                  const fee=Math.round((o.totalRevenue||0)*0.03);
+                  const tax=Math.round(fee*0.05);
+                  const total=fee+tax;
+                  return {...o,linePayFee:fee,linePayTax:tax,linePayTotal:total,profit:(o.totalRevenue||0)-(o.totalCost||0)-total};
+                });
+                save('orders',updated);
+                setOrders(updated);
+                alert('✅ 已更新 '+linepayOrders.length+' 筆工單！');
+              }}>🔄 一鍵更新全部</Btn>
+            </div>
+          );
+        })()}
         <Card hi><H>新增品牌</H><div style={{display:"flex",gap:8}}><Input value={nb} onChange={e=>setNb(e.target.value)} placeholder="品牌名稱" style={{marginBottom:0}}/><Btn sm onClick={()=>{if(!nb)return;const id=nb.toLowerCase().replace(/\s+/g,"_")+"_"+Date.now();sc({...catalog,brands:[...catalog.brands,{id,name:nb,models:[]}]});setNb("");}}>新增</Btn></div></Card>
 
         {/* 品牌排序說明 */}
@@ -2148,16 +2144,12 @@ function AdminPage({catalog,setCatalog,isBoss,orders,setOrders}) {
                           newSeries[idx]={...ser,models:ser.models.filter(m=>m!==mo)};
                           sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
                         }}
-                        onEdit={(oldVal,mi,newVal)=>{
+                        onEdit={(_,mi,newVal)=>{
                           const newSeries=[...bSeries];
                           const newModels=[...ser.models];
                           newModels[mi]=newVal;
                           newSeries[idx]={...ser,models:newModels};
                           sc({...catalog,brands:catalog.brands.map(x=>x.id===b.id?{...x,series:newSeries}:x)});
-                          // 同步更新所有工單的 modelName
-                          const updatedOrders=orders.map(o=>o.modelName===oldVal?{...o,modelName:newVal}:o);
-                          setOrders(updatedOrders);
-                          save(SK.orders,updatedOrders);
                         }}
                       />
 
@@ -2290,60 +2282,6 @@ function AdminPage({catalog,setCatalog,isBoss,orders,setOrders}) {
           onEdit={(_,i,v)=>{const a=[...(catalog.expenseTypes||DEF.expenseTypes)];a[i]=v;sc({...catalog,expenseTypes:a});}}
         />
       </Card>)}
-
-      {tab==="batchfix"&&(<div>
-        <Card hi>
-          <H>🔧 批次修正工單型號名稱</H>
-          <div style={{color:C.textDim,fontSize:13,lineHeight:1.8,marginBottom:14}}>
-            如果你在後台把型號從<br/>
-            <span style={{color:C.orange,fontWeight:700}}>「iPhone 12 Pro」</span> 改成 <span style={{color:C.green,fontWeight:700}}>「12 Pro」</span><br/>
-            舊工單不會自動更新，點下方按鈕可一次修正所有舊工單。<br/>
-            <span style={{color:C.textDim,fontSize:11}}>系統會自動偵測並去除型號前面多餘的品牌名稱前綴（iPhone、iPad、Apple Watch 等）</span>
-          </div>
-          {/* 預覽受影響的工單 */}
-          {(()=>{
-            const brandNames=(catalog.brands||[]).map(b=>b.name).filter(Boolean);
-            const prefixes=[...new Set([...brandNames,"iPhone","iPad","Mac","Apple Watch","AirPods","Apple"])];
-            const affected=(orders||[]).filter(o=>{
-              const mn=o.modelName||"";
-              return prefixes.some(p=>mn.startsWith(p+" "));
-            });
-            return affected.length>0?(
-              <div style={{background:"rgba(255,150,0,0.1)",border:`1px solid ${C.orange}44`,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
-                <div style={{color:C.orange,fontWeight:700,fontSize:13,marginBottom:8}}>📋 偵測到 {affected.length} 筆工單需要修正：</div>
-                <div style={{maxHeight:200,overflowY:"auto"}}>
-                  {affected.slice(0,20).map(o=>{
-                    const mn=o.modelName||"";
-                    let fixed=mn;
-                    for(const p of prefixes){if(mn.startsWith(p+" ")){fixed=mn.slice(p.length+1).trim();break;}}
-                    return(
-                      <div key={o.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
-                        <span style={{color:C.red,minWidth:90,textDecoration:"line-through"}}>{mn}</span>
-                        <span style={{color:C.textDim}}>→</span>
-                        <span style={{color:C.green,fontWeight:700}}>{fixed}</span>
-                        <span style={{color:C.textDim,fontSize:10,marginLeft:"auto"}}>{o.date}</span>
-                      </div>
-                    );
-                  })}
-                  {affected.length>20&&<div style={{color:C.textDim,fontSize:11,marginTop:6}}>...還有 {affected.length-20} 筆</div>}
-                </div>
-              </div>
-            ):(
-              <div style={{background:"rgba(0,200,100,0.08)",border:`1px solid ${C.green}44`,borderRadius:10,padding:"10px 14px",marginBottom:14,color:C.green,fontSize:13}}>
-                ✅ 所有工單型號格式都正確，不需要修正！
-              </div>
-            );
-          })()}
-          {fixResult&&(
-            <div style={{background:fixResult.count>0?"rgba(0,200,100,0.12)":"rgba(0,100,255,0.1)",border:`1px solid ${fixResult.count>0?C.green:C.accent}44`,borderRadius:10,padding:"10px 14px",marginBottom:14,color:fixResult.count>0?C.green:C.accent,fontSize:13,fontWeight:700}}>
-              {fixResult.count>0?"✅ ":"ℹ️ "}{fixResult.msg}
-            </div>
-          )}
-          <Btn onClick={()=>{if(!confirm("確定要批次修正所有工單的型號名稱嗎？此操作會立即同步至雲端。"))return;setFixResult(null);batchFixModelNames();}} style={{opacity:fixing?0.6:1}}>
-            {fixing?"⏳ 修正中...":"🔧 開始批次修正"}
-          </Btn>
-        </Card>
-      </div>)}
     </div>
   );
 }
