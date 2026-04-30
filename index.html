@@ -796,12 +796,8 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
         </div>
         {purOpen&&(()=>{
           const q=purSearch.toLowerCase();
-          const usedIds=new Set(items.filter(i=>i.id.startsWith("pur_")).map(i=>i.id.replace("pur_","")));
-          const usedNames=new Set(items.map(i=>i.name.toLowerCase()));
+          const addedIds=new Set(items.map(i=>i.id.startsWith("pur_")?i.id.replace("pur_",""):null).filter(Boolean));
           const results=(purchases||[]).filter(p=>{
-            if(usedIds.has(p.id)) return false;
-            const pName=[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join(" ").toLowerCase();
-            if(usedNames.has(pName)) return false;
             if(!q) return true;
             return [p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase().includes(q);
           }).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);
@@ -816,8 +812,9 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
               {results.length===0&&<div style={{color:C.textDim,fontSize:12,textAlign:"center",padding:12}}>找不到符合的進貨記錄</div>}
               {results.map(p=>{
                 const unitCost=Math.round(p.amount/(p.qty||1));
+                const added=addedIds.has(p.id);
                 return(
-                  <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",marginBottom:6,borderRadius:10,border:`1px solid ${C.border}`,background:"rgba(0,20,60,0.4)"}}>
+                  <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",marginBottom:6,borderRadius:10,border:`1px solid ${added?"rgba(0,200,100,0.4)":C.border}`,background:added?"rgba(0,80,40,0.3)":"rgba(0,20,60,0.4)",opacity:added?0.6:1}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                         <span style={{color:C.text,fontSize:13,fontWeight:700}}>{p.itemName||p.itemCat||"—"}</span>
@@ -831,14 +828,16 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
                       </div>
                       {p.note&&<div style={{color:C.textDim,fontSize:11,marginTop:2}}>備註：{p.note}</div>}
                     </div>
-                    <button
-                      onClick={()=>{
-                        const name=[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join(" ");
-                        setItems(prev=>[...prev,{id:"pur_"+p.id,name,cat:"進貨帶入",stockItem:"",cost:unitCost,qty:1,autoPrice:true}]);
-                        setPurOpen(false);setPurSearch("");
-                      }}
-                      style={{flexShrink:0,marginLeft:10,background:`linear-gradient(135deg,${C.accent2},${C.accent})`,border:"none",borderRadius:9,color:"#fff",fontSize:12,fontWeight:700,padding:"8px 14px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
-                    >＋ 帶入</button>
+                    {added
+                      ?<span style={{flexShrink:0,marginLeft:10,color:C.green,fontSize:12,fontWeight:700}}>✓ 已加入</span>
+                      :<button
+                        onClick={()=>{
+                          const name=[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join(" ");
+                          setItems(prev=>[...prev,{id:"pur_"+p.id,name,cat:"進貨帶入",stockItem:"",cost:unitCost,qty:1,autoPrice:true}]);
+                        }}
+                        style={{flexShrink:0,marginLeft:10,background:`linear-gradient(135deg,${C.accent2},${C.accent})`,border:"none",borderRadius:9,color:"#fff",fontSize:12,fontWeight:700,padding:"8px 14px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
+                      >＋ 帶入</button>
+                    }
                   </div>
                 );
               })}
