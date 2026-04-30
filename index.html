@@ -1183,7 +1183,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock}) {
                       <div style={{flex:1}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           <span style={{color:C.textMid,fontSize:13,fontWeight:600}}>{p.itemName||p.item||"—"}</span>
-                          {p.itemVariant&&<span style={{color:C.accent,fontSize:11,background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:5,padding:"1px 6px"}}>{p.itemVariant}</span>}
+                          {(p.itemBrand||p.itemVariant)&&<span style={{color:C.accent,fontSize:11,background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:5,padding:"1px 6px"}}>{[p.itemBrand,p.itemVariant].filter(Boolean).join(" ")}</span>}
                           <span style={{color:C.textDim,fontSize:11}}>{p.date}</span>
                         </div>
                         <div style={{display:"flex",gap:10,marginTop:3}}>
