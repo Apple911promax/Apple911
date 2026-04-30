@@ -796,11 +796,18 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
         </div>
         {purOpen&&(()=>{
           const q=purSearch.toLowerCase();
-          const usedInOrders=new Set((orders||[]).flatMap(o=>(o.items||[]).map(i=>i.id.startsWith("pur_")?i.id.replace("pur_",""):null)).filter(Boolean));
-          const usedInCurrent=new Set(items.filter(i=>i.id.startsWith("pur_")).map(i=>i.id.replace("pur_","")));
-          const isAdded=p=>usedInCurrent.has(p.id);
+          const usageCount={};
+          (orders||[]).forEach(o=>(o.items||[]).forEach(i=>{
+            const pid=i.purId||(i.id.startsWith("pur_")?i.id.replace(/^pur_/,"").replace(/_\d+$/,""):null);
+            if(pid) usageCount[pid]=(usageCount[pid]||0)+1;
+          }));
+          items.forEach(i=>{
+            const pid=i.purId||(i.id.startsWith("pur_")?i.id.replace(/^pur_/,"").replace(/_\d+$/,""):null);
+            if(pid) usageCount[pid]=(usageCount[pid]||0)+1;
+          });
+          const isAdded=p=>usageCount[p.id]>0&&usageCount[p.id]<(p.qty||1)?false:usageCount[p.id]>=(p.qty||1);
           const results=(purchases||[]).filter(p=>{
-            if(usedInOrders.has(p.id)) return false;
+            if((usageCount[p.id]||0)>=(p.qty||1)) return false;
             if(!q) return true;
             return [p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase().includes(q);
           }).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);
@@ -815,9 +822,10 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
               {results.length===0&&<div style={{color:C.textDim,fontSize:12,textAlign:"center",padding:12}}>找不到符合的進貨記錄</div>}
               {results.map(p=>{
                 const unitCost=Math.round(p.amount/(p.qty||1));
-                const added=isAdded(p);
+                const used=usageCount[p.id]||0;
+                const remaining=(p.qty||1)-used;
                 return(
-                  <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",marginBottom:6,borderRadius:10,border:`1px solid ${added?"rgba(0,200,100,0.4)":C.border}`,background:added?"rgba(0,80,40,0.3)":"rgba(0,20,60,0.4)",opacity:added?0.6:1}}>
+                  <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",marginBottom:6,borderRadius:10,border:`1px solid ${C.border}`,background:"rgba(0,20,60,0.4)"}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                         <span style={{color:C.text,fontSize:13,fontWeight:700}}>{p.itemName||p.itemCat||"—"}</span>
@@ -826,21 +834,18 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
                       </div>
                       <div style={{display:"flex",gap:10,marginTop:3,flexWrap:"wrap"}}>
                         <span style={{color:C.textDim,fontSize:11}}>🗓 {p.date}</span>
-                        <span style={{color:C.textDim,fontSize:11}}>數量：{p.qty||1}</span>
+                        <span style={{color:remaining<=1?C.orange:C.textDim,fontSize:11,fontWeight:remaining<=1?700:400}}>剩餘：{remaining}</span>
                         <span style={{color:C.green,fontSize:12,fontWeight:700}}>單價 {fmt(unitCost)}</span>
                       </div>
                       {p.note&&<div style={{color:C.textDim,fontSize:11,marginTop:2}}>備註：{p.note}</div>}
                     </div>
-                    {added
-                      ?<span style={{flexShrink:0,marginLeft:10,color:C.green,fontSize:12,fontWeight:700}}>✓ 已加入</span>
-                      :<button
-                        onClick={()=>{
-                          const name=[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join(" ");
-                          setItems(prev=>[...prev,{id:"pur_"+p.id,name,cat:"進貨帶入",stockItem:"",cost:unitCost,qty:1,autoPrice:true}]);
-                        }}
-                        style={{flexShrink:0,marginLeft:10,background:`linear-gradient(135deg,${C.accent2},${C.accent})`,border:"none",borderRadius:9,color:"#fff",fontSize:12,fontWeight:700,padding:"8px 14px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
-                      >＋ 帶入</button>
-                    }
+                    <button
+                      onClick={()=>{
+                        const name=[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join(" ");
+                        setItems(prev=>[...prev,{id:"pur_"+p.id+"_"+Date.now(),name,cat:"進貨帶入",stockItem:"",cost:unitCost,qty:1,autoPrice:true,purId:p.id}]);
+                      }}
+                      style={{flexShrink:0,marginLeft:10,background:`linear-gradient(135deg,${C.accent2},${C.accent})`,border:"none",borderRadius:9,color:"#fff",fontSize:12,fontWeight:700,padding:"8px 14px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
+                    >＋ 帶入</button>
                   </div>
                 );
               })}
