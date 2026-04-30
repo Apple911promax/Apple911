@@ -796,7 +796,8 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
         </div>
         {purOpen&&(()=>{
           const q=purSearch.toLowerCase();
-          const addedIds=new Set(items.map(i=>i.id.startsWith("pur_")?i.id.replace("pur_",""):null).filter(Boolean));
+          const addedNames=new Set(items.map(i=>{const n=i.name.toLowerCase().replace(/\s+/g,"");return n;}));
+          const isAdded=p=>{const n=[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join("").toLowerCase().replace(/\s+/g,"");return addedNames.has(n);};
           const results=(purchases||[]).filter(p=>{
             if(!q) return true;
             return [p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase().includes(q);
@@ -812,7 +813,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases}) {
               {results.length===0&&<div style={{color:C.textDim,fontSize:12,textAlign:"center",padding:12}}>找不到符合的進貨記錄</div>}
               {results.map(p=>{
                 const unitCost=Math.round(p.amount/(p.qty||1));
-                const added=addedIds.has(p.id);
+                const added=isAdded(p);
                 return(
                   <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",marginBottom:6,borderRadius:10,border:`1px solid ${added?"rgba(0,200,100,0.4)":C.border}`,background:added?"rgba(0,80,40,0.3)":"rgba(0,20,60,0.4)",opacity:added?0.6:1}}>
                     <div style={{flex:1,minWidth:0}}>
