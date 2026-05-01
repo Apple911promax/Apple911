@@ -1035,7 +1035,7 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
       </div>
 
       {filtered.length===0&&<Card><div style={{color:C.textDim,textAlign:"center",padding:24}}>尚無工單記錄</div></Card>}
-      {[...filtered].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(o=>(
+      {[...filtered].sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map(o=>(
         <Card key={o.id} style={{marginBottom:10}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
             <div style={{flex:1,minWidth:0}}>
@@ -1277,7 +1277,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
                 <span style={{color:C.accent,fontWeight:800}}>{v}</span>
                 <span style={{color:C.orange,fontWeight:800,fontSize:15}}>{fmt(data.total)}</span>
               </div>
-              {data.rows.map(p=>(
+              {[...data.rows].sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map(p=>(
                 <div key={p.id}>
                   {editId===p.id?(
                     <div style={{padding:"10px 0 10px 14px",borderBottom:`1px solid ${C.border}`,background:"rgba(0,60,140,0.15)",borderRadius:8,margin:"4px 0"}}>
