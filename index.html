@@ -772,10 +772,37 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
             if(pid) usageCount[pid]=(usageCount[pid]||0)+1;
           });
           const isAdded=p=>usageCount[p.id]>0&&usageCount[p.id]<(p.qty||1)?false:usageCount[p.id]>=(p.qty||1);
+          // 建立型號 → 通用庫存ID 的對照表（從 purchaseCategories 的 stockIds 讀取）
+          const variantToStockId={};
+          const stockIdToVariants={};
+          (catalog.purchaseCategories||[]).forEach(catObj=>{
+            (catObj.brands||[]).forEach(bObj=>{
+              (bObj.series||[]).forEach(sObj=>{
+                const stockIds=sObj.stockIds||{};
+                (sObj.models||[]).forEach(m=>{
+                  const sid=stockIds[m];
+                  if(sid){
+                    variantToStockId[m]=sid;
+                    if(!stockIdToVariants[sid]) stockIdToVariants[sid]=[];
+                    if(!stockIdToVariants[sid].includes(m)) stockIdToVariants[sid].push(m);
+                  }
+                });
+              });
+            });
+          });
+          // 取得與搜尋型號通用的所有型號
+          function getRelatedVariants(variant){
+            if(!variant) return [];
+            const sid=variantToStockId[variant];
+            if(!sid) return [];
+            return stockIdToVariants[sid]||[];
+          }
           const results=(purchases||[]).filter(p=>{
             if((usageCount[p.id]||0)>=(p.qty||1)) return false;
             if(!q) return true;
-            const haystack=[p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase();
+            // 擴展型號：把通用庫存ID的相關型號也加入搜尋範圍
+            const relatedVariants=getRelatedVariants(p.itemVariant);
+            const haystack=[p.itemCat,p.itemName,p.itemBrand,p.itemVariant,...relatedVariants,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase();
             const tokens=q.split(/\s+/).filter(Boolean);
             return tokens.every(t=>haystack.includes(t));
           }).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);
@@ -798,6 +825,14 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
                       <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                         <span style={{color:C.text,fontSize:13,fontWeight:700}}>{p.itemName||p.itemCat||"—"}</span>
                         {(p.itemBrand||p.itemVariant)&&<span style={{color:C.accent,fontSize:11,background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:4,padding:"1px 5px"}}>{[p.itemBrand,p.itemVariant].filter(Boolean).join(" ")}</span>}
+                        {(()=>{
+                          const relVars=getRelatedVariants(p.itemVariant);
+                          if(!relVars.length||!q) return null;
+                          // 只在因為通用ID才搜到（搜尋詞不直接匹配 itemVariant）時顯示
+                          const directMatch=(p.itemVariant||"").toLowerCase().includes(q.split(/\s+/).find(t=>t)||"");
+                          if(directMatch) return null;
+                          return <span style={{color:C.gold,fontSize:10,background:"rgba(255,200,0,0.1)",border:"1px solid rgba(255,200,0,0.3)",borderRadius:4,padding:"1px 6px",fontWeight:700}}>🔗通用</span>;
+                        })()}
                         {p.vendorName&&<span style={{color:C.gold,fontSize:11}}>📦{p.vendorName}</span>}
                       </div>
                       <div style={{display:"flex",gap:10,marginTop:3,flexWrap:"wrap"}}>
