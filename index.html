@@ -590,42 +590,54 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
 
   function togglePay(p)    { setPayments(ps=>ps.includes(p)?ps.filter(x=>x!==p):[...ps,p]); }
   function toggleVendor(v) { setVendors(vs=>vs.includes(v)?vs.filter(x=>x!==v):[...vs,v]); }
-  // 查最新進貨單價：用關鍵字模糊比對
+  // 查最新進貨單價：用關鍵字比對，但型號必須同系列，避免 iPhone 12 抓到 iPhone 13 mini
   function getLatestCost(stockItem, itemName) {
     if(!purchases?.length) return null;
     const cur = modelName;
 
-    // 比對函式：進貨品項名稱包含關鍵字，或關鍵字包含在進貨品項名稱裡
+    const normalizeModel = v => (v||"").toLowerCase().replace(/iphone|ipad|apple watch|watch|series|第|代|\s+/g, "").trim();
+    const modelNo = v => (normalizeModel(v).match(/\d+/)||[])[0] || "";
+    const sameRepairSeries = (variant) => {
+      if(!variant || !cur) return true;
+      if(variant === cur) return true;
+      const curNo = modelNo(cur);
+      const varNo = modelNo(variant);
+      return !!curNo && !!varNo && curNo === varNo;
+    };
+
+    // 比對函式：只比對品項名稱，不讓短數字造成不同系列誤判
     function matches(p, keyword) {
       if(!keyword) return false;
       const cat = (p.itemCat||p.itemName||"").toLowerCase();
-      const kw = keyword.toLowerCase();
-      return cat.includes(kw) || kw.includes(cat);
+      const kw = String(keyword).toLowerCase().trim();
+      if(!kw) return false;
+      const cleaned = kw.replace(/更換|維修|安裝|修復|代工|清洗|升級|整新|校正/g, "").trim();
+      const keys = [kw, cleaned].filter(k=>k && !/^\d+$/.test(k));
+      return keys.some(k => cat.includes(k) || k.includes(cat));
     }
 
-    // 收集所有可能符合的記錄
+    // 收集所有可能符合的記錄；型號必須是同系列（例如 12 / 12 Pro 可共用，13 mini 不會混進來）
     const pool = purchases.filter(p =>
-      (matches(p, itemName) || matches(p, stockItem)) && p.amount && p.qty
+      (matches(p, itemName) || matches(p, stockItem)) &&
+      sameRepairSeries(p.itemVariant) &&
+      p.amount && p.qty
     ).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
 
     if(!pool.length) return null;
 
-    // 優先：廠商符合 + 型號符合
+    const vendorMatch = p => vendors?.some(v=>(p.vendorName||"").includes(v)||(v||"").includes(p.vendorName||""));
+
+    // 優先：廠商符合 + 型號完全符合
     if(vendors?.length) {
-      const vendorExact = pool.find(p=>
-        vendors.some(v=>(p.vendorName||"").includes(v)||(v||"").includes(p.vendorName||"")) &&
-        p.itemVariant===cur
-      );
+      const vendorExact = pool.find(p=>vendorMatch(p) && p.itemVariant===cur);
       if(vendorExact) return Math.round(Number(vendorExact.amount)/(Number(vendorExact.qty)||1));
 
-      // 廠商符合（不限型號）
-      const vendorAny = pool.find(p=>
-        vendors.some(v=>(p.vendorName||"").includes(v)||(v||"").includes(p.vendorName||""))
-      );
-      if(vendorAny) return Math.round(Number(vendorAny.amount)/(Number(vendorAny.qty)||1));
+      // 廠商符合 + 同系列通用型號
+      const vendorSameSeries = pool.find(p=>vendorMatch(p));
+      if(vendorSameSeries) return Math.round(Number(vendorSameSeries.amount)/(Number(vendorSameSeries.qty)||1));
     }
 
-    // 型號符合
+    // 型號完全符合優先，其次才用同系列通用庫存
     const exact = pool.find(p=>p.itemVariant===cur);
     const p = exact || pool[0];
     return Math.round(Number(p.amount)/(Number(p.qty)||1));
@@ -800,11 +812,19 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
           const results=(purchases||[]).filter(p=>{
             if((usageCount[p.id]||0)>=(p.qty||1)) return false;
             if(!q) return true;
-            // 擴展型號：把通用庫存ID的相關型號也加入搜尋範圍
+            // 擴展型號：通用庫存可以搜尋，但數字型號必須直接符合該進貨型號，避免 12 搜到 13 mini
             const relatedVariants=getRelatedVariants(p.itemVariant);
-            const haystack=[p.itemCat,p.itemName,p.itemBrand,p.itemVariant,...relatedVariants,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase();
+            const directHaystack=[p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase();
+            const relatedHaystack=[p.itemCat,p.itemName,p.itemBrand,p.itemVariant,...relatedVariants,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase();
             const tokens=q.split(/\s+/).filter(Boolean);
-            return tokens.every(t=>haystack.includes(t));
+            const variantText=(p.itemVariant||"").toLowerCase();
+            const hasExactNumberToken=(text, token)=>new RegExp("(^|[^0-9])"+token+"([^0-9]|$)").test(text);
+            return tokens.every(t=>{
+              if(/^\d+$/.test(t)){
+                return hasExactNumberToken(variantText, t) || hasExactNumberToken(directHaystack, t);
+              }
+              return relatedHaystack.includes(t);
+            });
           }).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);
           return(
             <div style={{marginTop:10}}>
@@ -844,9 +864,17 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
                     </div>
                     <button
                       onClick={()=>{
-                        const name=[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join(" ");
-                        setItems(prev=>[...prev,{id:"pur_"+p.id+"_"+Date.now(),name,cat:"進貨帶入",stockItem:"",cost:unitCost,qty:1,autoPrice:true,purId:p.id}]);
-                        if(p.itemVariant){
+                        // 顯示名稱用「目前維修選擇的型號」，不要用進貨紀錄的型號。
+                        // 例如：進貨寫 iPhone 12 Pro（通用電池），但工單目前選 iPhone 12，明細仍顯示 iPhone 12。
+                        const repairModel = modelName || p.itemVariant || "";
+                        const name=[p.itemName||p.itemCat,p.itemBrand,repairModel].filter(Boolean).join(" ");
+                        // 用進貨品項的 stockId 記錄扣庫存來源；
+                        // 若 12 / 12 Pro 共用同一個 stockId，新增工單後會扣同一組通用庫存。
+                        // 刪除或取消工單時，因為庫存是由 orders 重新計算，會自動補回。
+                        const stockId = getStockId(catalog, p.itemCat, p.itemBrand, p.itemVariant);
+                        setItems(prev=>[...prev,{id:"pur_"+p.id+"_"+Date.now(),name,cat:"進貨帶入",stockItem:p.itemCat||"",stockId,stockModel:p.itemVariant||"",cost:unitCost,qty:1,autoPrice:true,purId:p.id}]);
+                        // 只有在尚未選擇維修型號時，才用進貨型號幫忙帶入；避免把原本選的 iPhone 12 改成 iPhone 12 Pro。
+                        if(!modelName && p.itemVariant){
                           const allMF=(catalog.brands||[]).flatMap(b=>(b.series||[]).flatMap(s=>s.models.map(m=>({model:m,brandId:b.id,seriesName:s.name}))));
                           const found=allMF.find(x=>x.model===p.itemVariant);
                           if(found){setBrand(found.brandId);setSelSeries(found.seriesName);setModel(found.model);setModelFree(found.model);}
@@ -883,8 +911,9 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                 <div>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <div style={{color:C.text,fontSize:13,fontWeight:700}}>{item.name}</div>
+                    <div style={{color:C.text,fontSize:13,fontWeight:700}}>{item.stockModel&&modelName&&item.stockModel!==modelName?(item.name||"").replace(item.stockModel,modelName):item.name}</div>
                     {item.autoPrice&&<span style={{background:"rgba(0,200,100,0.15)",border:"1px solid rgba(0,200,100,0.3)",borderRadius:5,color:C.green,fontSize:10,fontWeight:700,padding:"1px 6px"}}>自動帶入</span>}
+                    {item.stockModel&&modelName&&item.stockModel!==modelName&&<span style={{background:"rgba(255,200,0,0.1)",border:"1px solid rgba(255,200,0,0.3)",borderRadius:5,color:C.gold,fontSize:10,fontWeight:700,padding:"1px 6px"}}>來源：{item.stockModel}（通用）</span>}
                   </div>
                   <div style={{color:C.textDim,fontSize:10,marginTop:1}}>{item.cat}</div>
                 </div>
@@ -1098,7 +1127,15 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
                 <span style={{color:C.text,fontWeight:800,fontSize:14}}>{o.brandName||""} {o.modelName||o.modelFree||"（無型號）"}</span>
                 {o.customer&&<Tag color={C.textMid}>{o.customer}</Tag>}
               </div>
-              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:5}}>{o.items?.map(i=><Tag key={i.id} color={C.accent}>{i.name}</Tag>)}</div>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:5}}>{o.items?.map(i=>{
+                    const repairModel=o.modelName||o.modelFree||"";
+                    const hasSource=i.stockModel&&repairModel&&i.stockModel!==repairModel;
+                    const displayName=hasSource?(i.name||"").replace(i.stockModel,repairModel):i.name;
+                    return <React.Fragment key={i.id}>
+                      <Tag color={C.accent}>{displayName}</Tag>
+                      {hasSource&&<Tag color={C.gold}>來源：{i.stockModel}（通用）</Tag>}
+                    </React.Fragment>;
+                  })}</div>
               {o.payments?.length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:5}}>{o.payments.map(p=>{const ps=PAY_STYLE[p]||{bd:C.border,bg:"rgba(0,40,100,0.3)",tx:C.textMid,ic:"💰"};return<span key={p} style={{background:ps.bg,border:`1px solid ${ps.bd}`,color:ps.tx,borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{ps.ic} {p}</span>;})}</div>}
               {o.vendors?.length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:5}}>{o.vendors.map(v=><Tag key={v} color={C.orange}>{v}</Tag>)}</div>}
               {o.note&&<div style={{color:C.textDim,fontSize:11,marginTop:6,background:"rgba(0,18,55,0.5)",borderRadius:8,padding:"7px 11px",borderLeft:`2px solid ${C.borderHi}`,whiteSpace:"pre-wrap",lineHeight:1.6}}>{o.note.length>120?o.note.slice(0,120)+"…":o.note}</div>}
@@ -1169,6 +1206,8 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
   const [fd,setFd] = useState("全部");
   const [editId,setEditId] = useState(null);
   const [editForm,setEditForm] = useState(null);
+  const [purSearch,setPurSearch] = useState("");
+  const [purSearchScope,setPurSearchScope] = useState("date"); // date=依目前年月日 / all=全部紀錄
 
   const cats = Array.isArray(catalog.purchaseCategories)?catalog.purchaseCategories:DEF.purchaseCategories;
 
@@ -1215,6 +1254,34 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
   const byVendor=filtered.reduce((acc,p)=>{const k=p.vendorName||p.vendor||"未知廠商";if(!acc[k])acc[k]={total:0,rows:[]};acc[k].total+=p.amount;acc[k].rows.push(p);return acc;},{});
   const byItem=filtered.reduce((acc,p)=>{const k=p.itemName||p.item||"未分類";if(!acc[k])acc[k]={total:0,qty:0};acc[k].total+=p.amount;acc[k].qty+=(Number(p.qty)||1);return acc;},{});
   const grandTotal=filtered.reduce((a,p)=>a+p.amount,0);
+
+  const searchBase = purSearchScope==="all" ? purchases : filtered;
+  // 進貨搜尋：支援「12電池」這種連在一起的輸入，同時避免 12 誤搜到 13 mini。
+  const normalizePurQuery = (q="") => String(q)
+    .replace(/[，,、\/]+/g," ")
+    .replace(/(iphone|ipad)\s*/gi,"$1 ")
+    .replace(/(\d+)([A-Za-z一-鿿])/g,"$1 $2")
+    .replace(/([A-Za-z一-鿿])(\d+)/g,"$1 $2")
+    .replace(/\s+/g," ")
+    .trim()
+    .toLowerCase();
+  const searchTerm = normalizePurQuery(purSearch);
+  const searchTokens = searchTerm ? searchTerm.split(" ").filter(Boolean) : [];
+  const hasExactNumberToken = (text,num) => new RegExp(`(^|[^0-9])${num}([^0-9]|$)`).test(String(text||"").toLowerCase());
+  const searchRows = searchTokens.length
+    ? searchBase.filter(p=>{
+        const itemText = [p.itemName,p.itemCat,p.item,p.itemBrand,p.itemVariant,p.note]
+          .filter(v=>v!==undefined&&v!==null).join(" ").toLowerCase();
+        const allText = [p.date,p.itemName,p.itemCat,p.item,p.itemBrand,p.itemVariant,p.vendorName,p.vendor,p.customVendor,p.note,p.amount,p.qty]
+          .filter(v=>v!==undefined&&v!==null).join(" ").toLowerCase();
+        return searchTokens.every(k=>{
+          // 純數字視為型號/系列關鍵字，只比對品項/型號文字，不拿日期或金額來誤判。
+          if(/^\d+$/.test(k)) return hasExactNumberToken(itemText,k);
+          return allText.includes(k);
+        });
+      }).sort((a,b)=>(b.date||"").localeCompare(a.date||""))
+    : [];
+  const searchTotal = searchRows.reduce((a,p)=>a+(Number(p.amount)||0),0);
 
   return (
     <div>
@@ -1300,14 +1367,39 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
         )}
       </Card>
 
-      <div style={{display:"flex",gap:8,marginBottom:12}}>
+      <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
         <select value={fy} onChange={e=>{setFy(Number(e.target.value));setFd("全部");}} style={selBase}>{Array.from({length:nowYM().y-2025+2},(_,i)=>nowYM().y+1-i).filter(y=>y>=2025).map(y=><option key={y} value={y}>{y}年</option>)}</select>
         <select value={fm} onChange={e=>{setFm(Number(e.target.value));setFd("全部");}} style={selBase}>{MZ.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select>
         <select value={fd} onChange={e=>setFd(e.target.value)} style={selBase}>
           <option value="全部">全部</option>
           {[...new Set(purchases.filter(p=>p.date?.slice(0,7)===curMK).map(p=>p.date?.slice(0,10)).filter(Boolean))].sort().reverse().map(d=><option key={d} value={d}>{d.slice(8)}日</option>)}
         </select>
+        <select value={purSearchScope} onChange={e=>setPurSearchScope(e.target.value)} style={selBase}>
+          <option value="date">依日期篩選</option>
+          <option value="all">全部紀錄</option>
+        </select>
+        <input value={purSearch} onChange={e=>setPurSearch(e.target.value)} placeholder="搜尋進貨紀錄，例如：電池、保護貼、廠商名稱" style={{...selBase,flex:"1 1 280px",minWidth:220}}/>
+        {purSearch&&<button onClick={()=>setPurSearch("")} style={{...selBase,cursor:"pointer",color:C.textDim}}>清除</button>}
       </div>
+
+      {searchTerm&&(<Card>
+        <H>🔎 進貨搜尋結果 <span style={{fontSize:12,color:C.textDim,fontWeight:600}}>（{purSearchScope==="all"?"全部紀錄":"目前日期篩選"} · {searchRows.length} 筆 · {fmt(searchTotal)}）</span></H>
+        {searchRows.length===0?
+          <div style={{color:C.textDim,fontSize:12}}>找不到符合「{purSearch}」的進貨紀錄</div>:
+          searchRows.map(p=>(
+            <div key={p.id} style={{display:"grid",gridTemplateColumns:"90px 1.3fr 1fr 1fr 70px 90px 100px 1.2fr",gap:8,alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
+              <span style={{color:C.textDim}}>{p.date||"—"}</span>
+              <span style={{color:C.text,fontWeight:700}}>{p.itemName||p.itemCat||p.item||"—"}</span>
+              <span style={{color:C.accent}}>{[p.itemBrand,p.itemVariant].filter(Boolean).join(" ")||"—"}</span>
+              <span style={{color:C.gold}}>{p.vendorName||p.vendor||p.customVendor||"—"}</span>
+              <span style={{color:C.text}}>x {p.qty||1}</span>
+              <span style={{color:C.green,fontWeight:800}}>{fmt(Math.round((Number(p.amount)||0)/(Number(p.qty)||1)))}</span>
+              <span style={{color:C.gold,fontWeight:800}}>{fmt(p.amount||0)}</span>
+              <span style={{color:C.textDim,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.note||"—"}</span>
+            </div>
+          ))
+        }
+      </Card>)}
 
       <Card>
         <H>🏭 廠商統計</H>
