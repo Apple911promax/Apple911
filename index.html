@@ -715,7 +715,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
               const suggestions = allModelsFull.filter(x=>x.model.toLowerCase().includes(q)&&x.model!==modelFree).slice(0,8);
               if(!suggestions.length) return null;
               return (
-                <div style={{position:"absolute",left:0,right:0,top:"100%",zIndex:9999,background:"rgba(5,15,50,0.98)",border:`1.5px solid ${C.accent}`,borderRadius:12,maxHeight:280,overflowY:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 12px 40px rgba(0,0,0,0.8)"}}>
+                <div style={{marginTop:4,background:"rgba(5,15,50,0.98)",border:`1.5px solid ${C.accent}`,borderRadius:12,maxHeight:280,overflowY:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 8px 24px rgba(0,0,0,0.6)"}}>
                   <div style={{padding:"8px 14px",fontSize:11,color:C.textDim,borderBottom:`1px solid rgba(0,100,200,0.2)`,fontWeight:600}}>👆 點選自動帶入品牌、系列、型號</div>
                   {suggestions.map((x,i)=>(
                     <div key={i}
