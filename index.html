@@ -775,7 +775,9 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
           const results=(purchases||[]).filter(p=>{
             if((usageCount[p.id]||0)>=(p.qty||1)) return false;
             if(!q) return true;
-            return [p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase().includes(q);
+            const haystack=[p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase();
+            const tokens=q.split(/\s+/).filter(Boolean);
+            return tokens.every(t=>haystack.includes(t));
           }).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);
           return(
             <div style={{marginTop:10}}>
