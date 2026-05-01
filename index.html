@@ -715,7 +715,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
               const suggestions = allModelsFull.filter(x=>x.model.toLowerCase().includes(q)&&x.model!==modelFree).slice(0,8);
               if(!suggestions.length) return null;
               return (
-                <div style={{position:"fixed",left:"3%",right:"3%",zIndex:9999,background:"rgba(5,15,50,0.98)",border:`1.5px solid ${C.accent}`,borderRadius:12,maxHeight:280,overflowY:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 12px 40px rgba(0,0,0,0.8)"}}>
+                <div style={{position:"absolute",left:0,right:0,top:"100%",zIndex:9999,background:"rgba(5,15,50,0.98)",border:`1.5px solid ${C.accent}`,borderRadius:12,maxHeight:280,overflowY:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 12px 40px rgba(0,0,0,0.8)"}}>
                   <div style={{padding:"8px 14px",fontSize:11,color:C.textDim,borderBottom:`1px solid rgba(0,100,200,0.2)`,fontWeight:600}}>👆 點選自動帶入品牌、系列、型號</div>
                   {suggestions.map((x,i)=>(
                     <div key={i}
@@ -811,6 +811,11 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
                       onClick={()=>{
                         const name=[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join(" ");
                         setItems(prev=>[...prev,{id:"pur_"+p.id+"_"+Date.now(),name,cat:"進貨帶入",stockItem:"",cost:unitCost,qty:1,autoPrice:true,purId:p.id}]);
+                        if(p.itemVariant){
+                          const allMF=(catalog.brands||[]).flatMap(b=>(b.series||[]).flatMap(s=>s.models.map(m=>({model:m,brandId:b.id,seriesName:s.name}))));
+                          const found=allMF.find(x=>x.model===p.itemVariant);
+                          if(found){setBrand(found.brandId);setSelSeries(found.seriesName);setModel(found.model);setModelFree(found.model);}
+                        }
                       }}
                       style={{flexShrink:0,marginLeft:10,background:`linear-gradient(135deg,${C.accent2},${C.accent})`,border:"none",borderRadius:9,color:"#fff",fontSize:12,fontWeight:700,padding:"8px 14px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
                     >＋ 帶入</button>
