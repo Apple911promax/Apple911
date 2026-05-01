@@ -529,7 +529,6 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
   const [photos,setPhotos]     = useState(editOrder?.photos||[]);
   const [totalPrice,setTotalPrice] = useState(editOrder?.totalRevenue||"");
   const [custItem,setCustItem] = useState({name:"",cost:""});
-  const [filterCat,setFilterCat]= useState("全部");
   const [purSearch,setPurSearch] = useState("");
   const [purOpen,setPurOpen] = useState(false);
   const [selSeries,setSelSeries] = useState("");
@@ -539,7 +538,6 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
   const modelList = allSeries.flatMap(s=>s.models);
   const payMethods= catalog.paymentMethods||DEF.paymentMethods;
   const vendorList= catalog.vendors||DEF.vendors;
-  const visItems  = filterCat==="全部"?catalog.repairItems:catalog.repairItems.filter(i=>i.cat===filterCat);
   const repairCats = catalog.repairCats||RCATS;
 
   const modelName = (model==="_custom"||model==="__custom")?modelFree:model;
@@ -754,38 +752,6 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
         <Chips options={vendorList} selected={vendors} onToggle={toggleVendor}
           getStyle={(_,on)=>({bd:C.orange,bg:"rgba(255,140,60,0.18)",tx:C.orange})} small/>
         {vendors.length>0&&<div style={{color:C.textDim,fontSize:11,marginTop:9}}>已選：{vendors.join("、")}</div>}
-      </Card>
-
-      {/* 項目選擇 — 附庫存顯示 */}
-      <Card>
-        <H>🔩 選擇維修 / 配件項目（可複選）</H>
-        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}}>
-          {["全部",...(catalog.repairCats||RCATS)].map(cat=>(
-            <button key={cat} onClick={()=>setFilterCat(cat)} style={{padding:"4px 10px",borderRadius:16,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit",background:filterCat===cat?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(255,255,255,0.06)",color:filterCat===cat?"#fff":C.textMid}}>{cat}</button>
-          ))}
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
-          {visItems.map(ri=>{
-            const sel = items.find(i=>i.id===ri.id);
-            const stockQty = ri.stockItem && stock?.[ri.stockItem]?.stock;
-            const hasStock = ri.stockItem && stock;
-            const low = hasStock && stockQty<=2;
-            return (
-              <div key={ri.id} onClick={()=>toggleItem(ri)} style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",userSelect:"none",border:`1.5px solid ${sel?C.borderHi:C.border}`,background:sel?"rgba(0,100,255,0.18)":"rgba(0,20,60,0.4)",transition:"all .15s"}}>
-                <div style={{color:sel?C.accent:C.textMid,fontSize:12,fontWeight:700,lineHeight:1.3}}>{ri.name}</div>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:3}}>
-                  <div style={{color:C.textDim,fontSize:10}}>{ri.cat}</div>
-                  {hasStock&&(
-                    <div style={{fontSize:10,fontWeight:700,color:low?"#ff3d5a":stockQty===0?"#ff3d5a":C.textMid,background:low?"rgba(255,60,90,0.15)":"rgba(0,20,60,0.4)",borderRadius:5,padding:"1px 6px"}}>
-                      {stockQty===0?"缺貨⚠️":`庫存: ${stockQty}${low?" ⚠️":""}`}
-                    </div>
-                  )}
-                </div>
-                {sel&&<div style={{color:C.green,fontSize:10,marginTop:3,fontWeight:700}}>✓ 已選</div>}
-              </div>
-            );
-          })}
-        </div>
       </Card>
 
       {/* 搜尋進貨記錄 */}
