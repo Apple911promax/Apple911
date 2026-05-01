@@ -1454,13 +1454,19 @@ function InventoryPage({stock,catalog,setCatalog,purchases}) {
     setCollapsed(init);
   },[]);
 
+  const [warnThreshold, setWarnThreshold] = useState(()=>Number(localLoad("inv_warn_threshold",2)));
+  const [warnTab, setWarnTab] = useState("全部");
+  const [showWarn, setShowWarn] = useState(true);
+
   const lowItems = Object.values(
     Object.fromEntries(
       Object.values(stock)
-        .filter(x=>x.totalIn>0&&x.stock<=2)
+        .filter(x=>x.totalIn>0&&x.stock<=warnThreshold)
         .map(x=>[x.stockId, x])
     )
   );
+  const warnCats = ["全部",...[...new Set(lowItems.map(x=>x.cat))]];
+  const filteredWarn = warnTab==="全部" ? lowItems : lowItems.filter(x=>x.cat===warnTab);
   const filtered = filterCat==="全部" ? cats : cats.filter(x=>x.cat===filterCat);
 
   return (
@@ -1468,16 +1474,59 @@ function InventoryPage({stock,catalog,setCatalog,purchases}) {
       {/* 低庫存警示 */}
       {lowItems.length>0&&(
         <Card style={{border:`1.5px solid ${C.red}`,background:"rgba(255,40,70,0.08)",marginBottom:10}}>
-          <H>🚨 庫存預警</H>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {lowItems.map(x=>{const allModels=[x.model,...(x.aliases||[])];return (
-              <div key={x.stockId} style={{background:"rgba(255,40,70,0.15)",border:`1px solid ${C.red}`,borderRadius:10,padding:"6px 12px",textAlign:"center"}}>
-                <div style={{color:C.red,fontWeight:800,fontSize:12}}>{x.cat}</div>
-                <div style={{color:"#ff8899",fontSize:10}}>{x.brand} · {allModels.join(" / ")}</div>
-                <div style={{color:C.red,fontSize:12,fontWeight:700}}>剩 {x.stock}</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <H style={{margin:0}}>🚨 庫存預警</H>
+              <span style={{background:C.red,color:"#fff",borderRadius:10,fontSize:11,fontWeight:800,padding:"1px 8px"}}>{lowItems.length}</span>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{color:C.textDim,fontSize:11}}>警戒值：</span>
+                <select value={warnThreshold} onChange={e=>{const v=Number(e.target.value);setWarnThreshold(v);localSave("inv_warn_threshold",v);}} style={{background:"rgba(0,40,100,0.5)",border:`1px solid ${C.borderHi}`,borderRadius:6,color:C.text,fontSize:12,padding:"2px 6px",fontFamily:"inherit",cursor:"pointer"}}>
+                  {[1,2,3,4,5].map(n=><option key={n} value={n}>≤ {n}</option>)}
+                </select>
               </div>
-            );})}
+              <button onClick={()=>setShowWarn(s=>!s)} style={{background:"none",border:"none",color:C.textDim,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>{showWarn?"▲ 收合":"▼ 展開"}</button>
+            </div>
           </div>
+          {showWarn&&(
+            <div>
+              {/* 類別標籤 */}
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+                {warnCats.map(c=>(
+                  <button key={c} onClick={()=>setWarnTab(c)} style={{padding:"3px 10px",borderRadius:12,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit",background:warnTab===c?C.red:"rgba(255,40,70,0.12)",color:warnTab===c?"#fff":"#ff8899"}}>
+                    {c}{c!=="全部"&&` (${lowItems.filter(x=>x.cat===c).length})`}
+                  </button>
+                ))}
+              </div>
+              {/* 表格 */}
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead>
+                    <tr style={{borderBottom:`1px solid rgba(255,40,70,0.3)`}}>
+                      <th style={{color:C.textDim,fontWeight:600,padding:"4px 8px",textAlign:"left"}}>品項</th>
+                      <th style={{color:C.textDim,fontWeight:600,padding:"4px 8px",textAlign:"left"}}>型號</th>
+                      <th style={{color:C.textDim,fontWeight:600,padding:"4px 8px",textAlign:"center"}}>庫存</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredWarn.sort((a,b)=>a.stock-b.stock).map(x=>{
+                      const allModels=[x.model,...(x.aliases||[])];
+                      return (
+                        <tr key={x.stockId} style={{borderBottom:`1px solid rgba(255,40,70,0.1)`}}>
+                          <td style={{padding:"5px 8px",color:"#ff8899",fontWeight:700}}>{x.cat}<br/><span style={{color:C.textDim,fontWeight:400,fontSize:10}}>{x.brand}</span></td>
+                          <td style={{padding:"5px 8px",color:C.textMid}}>{allModels.join(" / ")}</td>
+                          <td style={{padding:"5px 8px",textAlign:"center"}}>
+                            <span style={{background:x.stock===0?"rgba(255,40,70,0.3)":"rgba(255,40,70,0.15)",color:C.red,fontWeight:800,borderRadius:6,padding:"2px 10px"}}>{x.stock}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
@@ -2650,6 +2699,192 @@ const MAC_DATA = [
   {type:"MacBook",name:"MacBook 12-inch",codes:"A1534",year:"2015-2017"},
 ];
 
+
+// ─── VENDOR PAGE ──────────────────────────────────────────────────────────────
+function VendorPage({catalog, setCatalog}) {
+  const vendors = catalog.vendorBook || [];
+  const [form, setForm] = useState({name:"", phone:"", line:"", url:"", note:""});
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+
+  function saveVendors(v) { setCatalog({...catalog, vendorBook: v}); }
+
+  function addVendor() {
+    if (!form.name.trim()) return;
+    saveVendors([...vendors, {...form, id: uid()}]);
+    setForm({name:"", phone:"", line:"", url:"", note:""});
+  }
+
+  function deleteVendor(id) {
+    if (!confirm("確定刪除？")) return;
+    saveVendors(vendors.filter(v=>v.id!==id));
+  }
+
+  function startEdit(v) { setEditId(v.id); setEditForm({...v}); }
+  function saveEdit() {
+    saveVendors(vendors.map(v=>v.id===editId?{...editForm}:v));
+    setEditId(null); setEditForm(null);
+  }
+
+  return (
+    <div>
+      <Card hi style={{marginBottom:12}}>
+        <H>🏪 新增廠商</H>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <Input label="廠商名稱 *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/>
+          <Input label="電話" value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))}/>
+          <Input label="LINE ID" value={form.line} onChange={e=>setForm(f=>({...f,line:e.target.value}))}/>
+          <Input label="🔗 網站/訂購連結" value={form.url} onChange={e=>setForm(f=>({...f,url:e.target.value}))}/>
+        </div>
+        <Input label="備註（常進品項等）" value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))}/>
+        <Btn onClick={addVendor}>＋ 新增廠商</Btn>
+      </Card>
+
+      {vendors.length===0
+        ? <Card><div style={{color:C.textDim,textAlign:"center",padding:24}}>還沒有廠商資料，新增第一個吧！</div></Card>
+        : vendors.map(v=>(
+          <Card key={v.id} style={{marginBottom:8}}>
+            {editId===v.id ? (
+              <div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <Input label="廠商名稱" value={editForm.name} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))}/>
+                  <Input label="電話" value={editForm.phone} onChange={e=>setEditForm(f=>({...f,phone:e.target.value}))}/>
+                  <Input label="LINE ID" value={editForm.line} onChange={e=>setEditForm(f=>({...f,line:e.target.value}))}/>
+                  <Input label="🔗 網站/訂購連結" value={editForm.url} onChange={e=>setEditForm(f=>({...f,url:e.target.value}))}/>
+                </div>
+                <Input label="備註" value={editForm.note} onChange={e=>setEditForm(f=>({...f,note:e.target.value}))}/>
+                <div style={{display:"flex",gap:8}}>
+                  <Btn sm onClick={saveEdit}>✓ 儲存</Btn>
+                  <Btn v="ghost" sm onClick={()=>setEditId(null)}>取消</Btn>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div style={{flex:1}}>
+                    <div style={{color:C.gold,fontWeight:800,fontSize:15,marginBottom:4}}>{v.name}</div>
+                    <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                      {v.phone&&<span style={{color:C.textMid,fontSize:12}}>📞 {v.phone}</span>}
+                      {v.line&&<span style={{color:C.textMid,fontSize:12}}>💬 {v.line}</span>}
+                    </div>
+                    {v.url&&(
+                      <a href={v.url.startsWith("http")?v.url:"https://"+v.url} target="_blank" rel="noopener noreferrer"
+                        style={{color:C.accent,fontSize:12,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4,marginTop:4}}>
+                        🔗 前往訂購網站
+                      </a>
+                    )}
+                    {v.note&&<div style={{color:C.textDim,fontSize:11,marginTop:4}}>📝 {v.note}</div>}
+                  </div>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    <button onClick={()=>startEdit(v)} style={{background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:8,color:C.accent,cursor:"pointer",fontSize:13,padding:"6px 10px",fontFamily:"inherit"}}>✏️</button>
+                    <button onClick={()=>deleteVendor(v.id)} style={{background:"rgba(255,50,80,0.15)",border:"none",borderRadius:8,color:C.red,cursor:"pointer",fontSize:13,padding:"6px 10px",fontFamily:"inherit"}}>🗑️</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </Card>
+        ))
+      }
+    </div>
+  );
+}
+
+// ─── QUOTE PAGE ───────────────────────────────────────────────────────────────
+function QuoteItem({item, onUpdate, onRemove, catalog}) {
+  const [editing, setEditing] = useState(false);
+  const [ef, setEf] = useState({name:item.name, price:String(item.price), cost:String(item.cost)});
+  return (
+    <div style={{padding:"8px 0", borderBottom:`1px solid ${C.border}`}}>
+      {editing ? (
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+          <Input label="項目名稱" value={ef.name} onChange={e=>setEf(f=>({...f,name:e.target.value}))} style={{marginBottom:0}}/>
+          <Input label="收費" type="number" value={ef.price} onChange={e=>setEf(f=>({...f,price:e.target.value}))} style={{marginBottom:0}}/>
+          <Input label="成本" type="number" value={ef.cost} onChange={e=>setEf(f=>({...f,cost:e.target.value}))} style={{marginBottom:0}}/>
+          <div style={{gridColumn:"1/-1",display:"flex",gap:6,marginTop:4}}>
+            <Btn sm onClick={()=>{onUpdate({...item,name:ef.name,price:Number(ef.price)||0,cost:Number(ef.cost)||0});setEditing(false);}}>✓ 儲存</Btn>
+            <Btn v="ghost" sm onClick={()=>setEditing(false)}>取消</Btn>
+          </div>
+        </div>
+      ) : (
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{flex:1}}>
+            <span style={{color:C.text,fontWeight:700,fontSize:13}}>{item.name}</span>
+            <span style={{color:C.textDim,fontSize:11,marginLeft:10}}>成本 {fmt(item.cost)}</span>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{color:C.green,fontWeight:800}}>{fmt(item.price)}</span>
+            <button onClick={()=>{setEf({name:item.name,price:String(item.price),cost:String(item.cost)});setEditing(true);}} style={{background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:6,color:C.accent,cursor:"pointer",fontSize:12,padding:"4px 8px",fontFamily:"inherit"}}>✏️</button>
+            <button onClick={onRemove} style={{background:"rgba(255,50,80,0.2)",border:"none",borderRadius:6,color:C.red,cursor:"pointer",fontSize:12,padding:"4px 8px",fontFamily:"inherit"}}>✕</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuotePage({catalog, stock}) {
+  const [items, setItems] = useState([]);
+  const [newItem, setNewItem] = useState({name:"", price:"", cost:""});
+  const [isLinePay, setIsLinePay] = useState(false);
+  const [note, setNote] = useState("");
+
+  const totalPrice = items.reduce((a,i)=>a+i.price, 0);
+  const totalCost  = items.reduce((a,i)=>a+i.cost, 0);
+  const lpFee      = isLinePay ? Math.round(totalPrice*0.03) : 0;
+  const lpTax      = isLinePay ? Math.round(lpFee*0.05) : 0;
+  const profit     = totalPrice - totalCost - lpFee - lpTax;
+  const margin     = totalPrice>0 ? Math.round(profit/totalPrice*100) : 0;
+
+  function addItem() {
+    if (!newItem.name || !newItem.price) return;
+    setItems(its=>[...its, {id:uid(), name:newItem.name, price:Number(newItem.price)||0, cost:Number(newItem.cost)||0}]);
+    setNewItem({name:"", price:"", cost:""});
+  }
+
+  return (
+    <div>
+      <Card hi style={{marginBottom:12}}>
+        <H>💰 內部報價試算</H>
+        <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:8,marginBottom:8}}>
+          <Input label="項目名稱" value={newItem.name} onChange={e=>setNewItem(f=>({...f,name:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&addItem()}/>
+          <Input label="收費 NT$" type="number" value={newItem.price} onChange={e=>setNewItem(f=>({...f,price:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&addItem()}/>
+          <Input label="成本 NT$" type="number" value={newItem.cost} onChange={e=>setNewItem(f=>({...f,cost:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&addItem()}/>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+          <Btn sm onClick={addItem}>＋ 加入</Btn>
+          <label style={{display:"flex",alignItems:"center",gap:6,color:C.textMid,fontSize:13,cursor:"pointer"}}>
+            <input type="checkbox" checked={isLinePay} onChange={e=>setIsLinePay(e.target.checked)} style={{cursor:"pointer"}}/>
+            💳 Line Pay（扣 3%+5%稅）
+          </label>
+        </div>
+
+        {items.length>0 && (
+          <div style={{marginTop:8}}>
+            {items.map(item=>(
+              <QuoteItem key={item.id} item={item}
+                onUpdate={updated=>setItems(its=>its.map(i=>i.id===item.id?updated:i))}
+                onRemove={()=>setItems(its=>its.filter(i=>i.id!==item.id))}
+                catalog={catalog}/>
+            ))}
+            <div style={{marginTop:12,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
+              <Stat label="收費總額" value={fmt(totalPrice)} icon="💰"/>
+              <Stat label="零件成本" value={fmt(totalCost)} color={C.orange} icon="📦"/>
+              {isLinePay&&<Stat label="Line Pay 手續費" value={fmt(lpFee+lpTax)} color={C.textDim} icon="💳"/>}
+              <Stat label="利潤" value={(profit>=0?"+":"")+fmt(profit)} color={profit>=0?C.green:C.red} icon="📈"/>
+              <Stat label="利潤率" value={margin+"%"} color={margin>=30?C.green:margin>=15?C.gold:C.red} icon="📊"/>
+            </div>
+            <div style={{marginTop:10,display:"flex",gap:8}}>
+              <Input label="備註" value={note} onChange={e=>setNote(e.target.value)} style={{flex:1,marginBottom:0}}/>
+              <Btn v="ghost" sm onClick={()=>{setItems([]);setNote("");setIsLinePay(false);}}>🗑️ 清空</Btn>
+            </div>
+          </div>
+        )}
+        {items.length===0&&<div style={{color:C.textDim,textAlign:"center",padding:16,fontSize:13}}>新增項目開始試算</div>}
+      </Card>
+    </div>
+  );
+}
+
 function LookupPage() {
   const [q,setQ] = useState("");
   const [tab,setTab] = useState("ipad"); // "ipad" | "mac"
@@ -2746,6 +2981,8 @@ const NAV_ALL   = [
   {id:"inventory",icon:"🗃️", label:"庫存"},
   {id:"expenses", icon:"📋", label:"月結算"},
   {id:"reports",  icon:"📊", label:"報表"},
+  {id:"vendors",  icon:"🏪", label:"廠商"},
+  {id:"quote",    icon:"💰", label:"報價"},
   {id:"lookup",   icon:"🔍", label:"查詢"},
   {id:"admin",    icon:"🔒", label:"後台"},
 ];
@@ -2926,6 +3163,8 @@ function App() {
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
         {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses}/>}
         {page==="lookup"   &&<LookupPage/>}
+        {page==="vendors"  &&<VendorPage catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}}/>}
+        {page==="quote"    &&<QuotePage catalog={catalog} stock={stock}/>}
         {page==="admin"    &&<AdminPage     catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} isBoss={role==="boss"} orders={orders} setOrders={setOrders}/>}
       </div>
 
