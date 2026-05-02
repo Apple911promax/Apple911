@@ -568,7 +568,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
     }
 
     const pool = purchases.filter(p => matches(p) && p.amount && p.qty)
-      .sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+      .sort((a,b)=>(a.date||"").localeCompare(b.date||""));
 
     if(!pool.length) return null;
 
@@ -621,7 +621,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
       (matches(p, itemName) || matches(p, stockItem)) &&
       sameRepairSeries(p.itemVariant) &&
       p.amount && p.qty
-    ).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+    ).sort((a,b)=>(a.date||"").localeCompare(b.date||""));
 
     if(!pool.length) return null;
 
@@ -856,7 +856,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
             const computedStockId=getStockId(catalog, p.itemCat, p.itemBrand, p.itemVariant);
             const itemHaystack=normalizeSearchText([p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.stockId,computedStockId,p.vendorName,p.note].filter(Boolean).join(" "));
             return genericTokens.every(t=>itemHaystack.includes(t));
-          }).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);
+          }).sort((a,b)=>(a.date||"").localeCompare(b.date||"")).slice(0,30);
           return(
             <div style={{marginTop:10}}>
               <input
@@ -1314,7 +1314,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
           if(/^\d+$/.test(k)) return hasExactNumberToken(itemText,k);
           return allText.includes(k);
         });
-      }).sort((a,b)=>(b.date||"").localeCompare(a.date||""))
+      }).sort((a,b)=>(a.date||"").localeCompare(b.date||""))
     : [];
   const searchTotal = searchRows.reduce((a,p)=>a+(Number(p.amount)||0),0);
 
