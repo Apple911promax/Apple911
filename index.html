@@ -661,7 +661,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
 
   const totalRevenue= Number(totalPrice)||0;
   const totalCost   = items.reduce((a,i)=>a+(Number(i.cost)||0)*(Number(i.qty)||1),0);
-  const isLinePay   = payments.some(p=>p.toLowerCase().includes("line"));
+  const isLinePay   = payments.some(p=>String(p||"").replace(/\s+/g,"").toLowerCase()==="linepay");
   const linePayFee  = isLinePay ? Math.round(totalRevenue*0.03) : 0;
   const linePayTax  = isLinePay ? Math.round(linePayFee*0.05) : 0;
   const linePayTotal= linePayFee+linePayTax;
@@ -1039,9 +1039,10 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
           <div style={{marginTop:12,padding:"14px",background:"rgba(0,60,160,0.2)",borderRadius:12,border:`1.5px solid ${C.borderHi}`}}>
             <Lbl c="💰 本次收費總金額 NT$"/>
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               value={totalPrice}
-              onChange={e=>setTotalPrice(e.target.value)}
+              onChange={e=>setTotalPrice(e.target.value.replace(/[^0-9]/g,""))}
               placeholder="輸入向客人收取的總金額"
               style={{
                 width:"100%",boxSizing:"border-box",
