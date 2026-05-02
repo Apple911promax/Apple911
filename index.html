@@ -784,7 +784,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
             if(pid) usageCount[pid]=(usageCount[pid]||0)+1;
           });
           const isAdded=p=>usageCount[p.id]>0&&usageCount[p.id]<(p.qty||1)?false:usageCount[p.id]>=(p.qty||1);
-          // 建立型號 → 通用庫存ID 的對照表（從 purchaseCategories 的 stockIds 讀取）
+          // 建立型號 → 通用庫存ID 的對照表（只讀取你手動設定的 stockIds，不自動產生）
           const variantToStockId={};
           const stockIdToVariants={};
           (catalog.purchaseCategories||[]).forEach(catObj=>{
@@ -802,29 +802,59 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
               });
             });
           });
-          // 取得與搜尋型號通用的所有型號
           function getRelatedVariants(variant){
             if(!variant) return [];
             const sid=variantToStockId[variant];
             if(!sid) return [];
             return stockIdToVariants[sid]||[];
           }
+          // 搜尋規則：型號詞（例如 14 Pro / 16 Pro Max）只比對型號與同 stockId 的通用型號；
+          // 品名詞（例如 牛角 / 高清 / 鏡頭）只比對品名、分類、廠商、備註，避免 14 Pro 搜到 15/17。
+          const normalizeSearchText=(v="")=>String(v)
+            .toLowerCase()
+            .replace(/iphone|ipad/g," ")
+            .replace(/[，,、/\\|()（）\[\]【】_-]+/g," ")
+            .replace(/(\d+)([a-z])/g,"$1 $2")
+            .replace(/([a-z])(\d+)/g,"$1 $2")
+            .replace(/\s+/g," ")
+            .trim();
+          const qTokens=normalizeSearchText(q).split(" ").filter(Boolean);
+          const modelSuffixes=new Set(["pro","max","mini","plus","air","e"]);
+          const modelTerms=[];
+          for(let i=0;i<qTokens.length;i++){
+            if(/^\d+$/.test(qTokens[i])){
+              const term=[qTokens[i]];
+              let j=i+1;
+              while(j<qTokens.length&&modelSuffixes.has(qTokens[j])){term.push(qTokens[j]);j++;}
+              modelTerms.push(term);
+            }
+          }
+          const genericTokens=qTokens.filter(t=>!/^\d+$/.test(t)&&!modelSuffixes.has(t));
+          function variantMatchesTerm(variant,term){
+            const vt=normalizeSearchText(variant).split(" ").filter(Boolean);
+            if(!term.length) return true;
+            for(let i=0;i<vt.length;i++){
+              if(vt[i]!==term[0]) continue;
+              let ok=true;
+              for(let j=1;j<term.length;j++){
+                if(vt[i+j]!==term[j]){ok=false;break;}
+              }
+              if(!ok) continue;
+              // 搜 14 Pro 時，不要匹配 14 Pro Max；搜 14 時可匹配 14/14 Pro/14 Pro Max。
+              if(term.length>1&&term[term.length-1]==="pro"&&vt[i+term.length]==="max") continue;
+              return true;
+            }
+            return false;
+          }
           const results=(purchases||[]).filter(p=>{
             if((usageCount[p.id]||0)>=(p.qty||1)) return false;
-            if(!q) return true;
-            // 擴展型號：通用庫存可以搜尋，但數字型號必須直接符合該進貨型號，避免 12 搜到 13 mini
+            if(!qTokens.length) return true;
             const relatedVariants=getRelatedVariants(p.itemVariant);
-            const directHaystack=[p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase();
-            const relatedHaystack=[p.itemCat,p.itemName,p.itemBrand,p.itemVariant,...relatedVariants,p.vendorName,p.note].filter(Boolean).join(" ").toLowerCase();
-            const tokens=q.split(/\s+/).filter(Boolean);
-            const variantText=(p.itemVariant||"").toLowerCase();
-            const hasExactNumberToken=(text, token)=>new RegExp("(^|[^0-9])"+token+"([^0-9]|$)").test(text);
-            return tokens.every(t=>{
-              if(/^\d+$/.test(t)){
-                return hasExactNumberToken(variantText, t) || hasExactNumberToken(directHaystack, t);
-              }
-              return relatedHaystack.includes(t);
-            });
+            const variants=[p.itemVariant,...relatedVariants].filter(Boolean);
+            const modelOK=modelTerms.every(term=>variants.some(v=>variantMatchesTerm(v,term)));
+            if(!modelOK) return false;
+            const itemHaystack=normalizeSearchText([p.itemCat,p.itemName,p.itemBrand,p.vendorName,p.note].filter(Boolean).join(" "));
+            return genericTokens.every(t=>itemHaystack.includes(t));
           }).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);
           return(
             <div style={{marginTop:10}}>
