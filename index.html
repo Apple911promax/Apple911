@@ -866,7 +866,11 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
                       onClick={()=>{
                         // 顯示名稱用「目前維修選擇的型號」，不要用進貨紀錄的型號。
                         // 例如：進貨寫 iPhone 12 Pro（通用電池），但工單目前選 iPhone 12，明細仍顯示 iPhone 12。
-                        const repairModel = modelName || p.itemVariant || "";
+                        // 只有「充電線」不要套用目前維修手機型號；其他項目維持原本邏輯。
+                        // 例：電池仍顯示 iPhone 12 Pro Max；充電線只顯示品名/規格，不加 12 Pro Max。
+                        const itemText = [p.itemCat, p.itemName, p.itemBrand].filter(Boolean).join(" ").toLowerCase();
+                        const isChargingCable = /充電線|傳輸線|充電傳輸線|lightning|usb-c|type-c|type c|usb to|mfi/.test(itemText);
+                        const repairModel = isChargingCable ? "" : (modelName || p.itemVariant || "");
                         const name=[p.itemName||p.itemCat,p.itemBrand,repairModel].filter(Boolean).join(" ");
                         // 用進貨品項的 stockId 記錄扣庫存來源；
                         // 若 12 / 12 Pro 共用同一個 stockId，新增工單後會扣同一組通用庫存。
