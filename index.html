@@ -941,15 +941,18 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
                         // 例如：進貨寫 iPhone 12 Pro（通用電池），但工單目前選 iPhone 12，明細仍顯示 iPhone 12。
                         // 只有「充電線」不要套用目前維修手機型號；其他項目維持原本邏輯。
                         // 例：電池仍顯示 iPhone 12 Pro Max；充電線只顯示品名/規格，不加 12 Pro Max。
-                        const itemText = [p.itemCat, p.itemName, p.itemBrand].filter(Boolean).join(" ").toLowerCase();
-                        const isChargingCable = /充電線|傳輸線|充電傳輸線|lightning|usb-c|type-c|type c|usb to|mfi/.test(itemText);
-                        const repairModel = isChargingCable ? (p.itemVariant || "") : (modelName || p.itemVariant || "");
-                        const name=[p.itemName||p.itemCat,p.itemBrand,repairModel].filter(Boolean).join(" ");
+                        const itemText = [p.itemCat, p.itemName, p.itemBrand, p.itemVariant, p.note].filter(Boolean).join(" ").toLowerCase();
+                        const isChargingCable = /充電線|傳輸線|充電傳輸線|lightning|usb-c|type-c|type c|usb to|mfi|c62|c68/.test(itemText);
+                        // 充電線不套用維修手機型號，只顯示它自己的規格/型號；其他零件維持用目前維修型號顯示。
+                        const repairModel = isChargingCable ? (p.itemVariant || p.itemBrand || "") : (modelName || p.itemVariant || "");
+                        const name = isChargingCable
+                          ? [p.itemName||p.itemCat, p.itemBrand, p.itemVariant].filter(Boolean).join(" ")
+                          : [p.itemName||p.itemCat,p.itemBrand,repairModel].filter(Boolean).join(" ");
                         // 用進貨品項的 stockId 記錄扣庫存來源；
                         // 若 12 / 12 Pro 共用同一個 stockId，新增工單後會扣同一組通用庫存。
                         // 刪除或取消工單時，因為庫存是由 orders 重新計算，會自動補回。
                         const stockId = getStockId(catalog, p.itemCat, p.itemBrand, p.itemVariant);
-                        setItems(prev=>[...prev,{id:"pur_"+p.id+"_"+Date.now(),name,cat:"進貨帶入",stockItem:p.itemCat||"",stockId,stockModel:p.itemVariant||"",cost:unitCost,qty:1,autoPrice:true,purId:p.id}]);
+                        setItems(prev=>[...prev,{id:"pur_"+p.id+"_"+Date.now(),name,cat:"進貨帶入",stockItem:p.itemCat||"",stockId,stockModel:p.itemVariant||"",cost:unitCost,qty:1,autoPrice:true,purId:p.id,noModelReplace:isChargingCable}]);
                         // 只有在尚未選擇維修型號時，才用進貨型號幫忙帶入；避免把原本選的 iPhone 12 改成 iPhone 12 Pro。
                         if(!modelName && p.itemVariant){
                           const allMF=(catalog.brands||[]).flatMap(b=>(b.series||[]).flatMap(s=>s.models.map(m=>({model:m,brandId:b.id,seriesName:s.name}))));
@@ -988,9 +991,9 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                 <div>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <div style={{color:C.text,fontSize:13,fontWeight:700}}>{item.stockModel&&modelName&&item.stockModel!==modelName?(item.name||"").replace(item.stockModel,modelName):item.name}</div>
+                    <div style={{color:C.text,fontSize:13,fontWeight:700}}>{!item.noModelReplace&&item.stockModel&&modelName&&item.stockModel!==modelName?(item.name||"").replace(item.stockModel,modelName):item.name}</div>
                     {item.autoPrice&&<span style={{background:"rgba(0,200,100,0.15)",border:"1px solid rgba(0,200,100,0.3)",borderRadius:5,color:C.green,fontSize:10,fontWeight:700,padding:"1px 6px"}}>自動帶入</span>}
-                    {item.stockModel&&modelName&&item.stockModel!==modelName&&<span style={{background:"rgba(255,200,0,0.1)",border:"1px solid rgba(255,200,0,0.3)",borderRadius:5,color:C.gold,fontSize:10,fontWeight:700,padding:"1px 6px"}}>來源：{item.stockModel}（通用）</span>}
+                    {!item.noModelReplace&&item.stockModel&&modelName&&item.stockModel!==modelName&&<span style={{background:"rgba(255,200,0,0.1)",border:"1px solid rgba(255,200,0,0.3)",borderRadius:5,color:C.gold,fontSize:10,fontWeight:700,padding:"1px 6px"}}>來源：{item.stockModel}（通用）</span>}
                   </div>
                   <div style={{color:C.textDim,fontSize:10,marginTop:1}}>{item.cat}</div>
                 </div>
@@ -1206,7 +1209,7 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
               </div>
               <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:5}}>{o.items?.map(i=>{
                     const repairModel=o.modelName||o.modelFree||"";
-                    const hasSource=i.stockModel&&repairModel&&i.stockModel!==repairModel;
+                    const hasSource=!i.noModelReplace&&i.stockModel&&repairModel&&i.stockModel!==repairModel;
                     const displayName=hasSource?(i.name||"").replace(i.stockModel,repairModel):i.name;
                     return <React.Fragment key={i.id}>
                       <Tag color={C.accent}>{displayName}</Tag>
