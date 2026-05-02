@@ -813,9 +813,9 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
           const normalizeSearchText=(v="")=>String(v)
             .toLowerCase()
             .replace(/iphone|ipad/g," ")
+            .replace(/pro\s*max/g,"pro max")
+            .replace(/(\d+)\s*(pro|max|mini|plus|air|e)\b/g,"$1 $2")
             .replace(/[，,、/\\|()（）\[\]【】_-]+/g," ")
-            .replace(/(\d+)([a-z])/g,"$1 $2")
-            .replace(/([a-z])(\d+)/g,"$1 $2")
             .replace(/\s+/g," ")
             .trim();
           const qTokens=normalizeSearchText(q).split(" ").filter(Boolean);
@@ -853,7 +853,8 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
             const variants=[p.itemVariant,...relatedVariants].filter(Boolean);
             const modelOK=modelTerms.every(term=>variants.some(v=>variantMatchesTerm(v,term)));
             if(!modelOK) return false;
-            const itemHaystack=normalizeSearchText([p.itemCat,p.itemName,p.itemBrand,p.vendorName,p.note].filter(Boolean).join(" "));
+            const computedStockId=getStockId(catalog, p.itemCat, p.itemBrand, p.itemVariant);
+            const itemHaystack=normalizeSearchText([p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.stockId,computedStockId,p.vendorName,p.note].filter(Boolean).join(" "));
             return genericTokens.every(t=>itemHaystack.includes(t));
           }).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);
           return(
@@ -900,7 +901,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
                         // 例：電池仍顯示 iPhone 12 Pro Max；充電線只顯示品名/規格，不加 12 Pro Max。
                         const itemText = [p.itemCat, p.itemName, p.itemBrand].filter(Boolean).join(" ").toLowerCase();
                         const isChargingCable = /充電線|傳輸線|充電傳輸線|lightning|usb-c|type-c|type c|usb to|mfi/.test(itemText);
-                        const repairModel = isChargingCable ? "" : (modelName || p.itemVariant || "");
+                        const repairModel = isChargingCable ? (p.itemVariant || "") : (modelName || p.itemVariant || "");
                         const name=[p.itemName||p.itemCat,p.itemBrand,repairModel].filter(Boolean).join(" ");
                         // 用進貨品項的 stockId 記錄扣庫存來源；
                         // 若 12 / 12 Pro 共用同一個 stockId，新增工單後會扣同一組通用庫存。
