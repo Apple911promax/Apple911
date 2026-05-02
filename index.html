@@ -808,6 +808,42 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
             if(!sid) return [];
             return stockIdToVariants[sid]||[];
           }
+          // 只讀取你手動設定的庫存 ID：支援「通用型號」搜尋，但不自動產生新的 stockId
+          function getManualStockId(cat,brand,variant){
+            if(!cat||!variant) return "";
+            let found="";
+            (catalog.purchaseCategories||[]).forEach(catObj=>{
+              if(found) return;
+              if(catObj.cat!==cat) return;
+              (catObj.brands||[]).forEach(bObj=>{
+                if(found) return;
+                if(brand&&bObj.name!==brand) return;
+                (bObj.series||[]).forEach(sObj=>{
+                  if(found) return;
+                  const sid=(sObj.stockIds||{})[variant];
+                  if(sid) found=sid;
+                });
+              });
+            });
+            return found;
+          }
+          function uniq(arr){return [...new Set((arr||[]).filter(Boolean))];}
+          // 找進貨紀錄已手動設定的 stockId：有些資料會把型號存在 itemBrand，有些存在 itemVariant，兩邊都要查。
+          function getManualStockIdsForPurchase(p){
+            const candidates=uniq([p.itemVariant,p.itemBrand]);
+            const ids=[];
+            if(!p.itemCat||!candidates.length) return ids;
+            (catalog.purchaseCategories||[]).forEach(catObj=>{
+              if(catObj.cat!==p.itemCat) return;
+              (catObj.brands||[]).forEach(bObj=>{
+                (bObj.series||[]).forEach(sObj=>{
+                  const stockIds=sObj.stockIds||{};
+                  candidates.forEach(v=>{ if(stockIds[v]) ids.push(stockIds[v]); });
+                });
+              });
+            });
+            return uniq(ids);
+          }
           // 搜尋規則：型號詞（例如 14 Pro / 16 Pro Max）只比對型號與同 stockId 的通用型號；
           // 品名詞（例如 牛角 / 高清 / 鏡頭）只比對品名、分類、廠商、備註，避免 14 Pro 搜到 15/17。
           const normalizeSearchText=(v="")=>String(v)
@@ -849,12 +885,18 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
           const results=(purchases||[]).filter(p=>{
             if((usageCount[p.id]||0)>=(p.qty||1)) return false;
             if(!qTokens.length) return true;
-            const relatedVariants=getRelatedVariants(p.itemVariant);
-            const variants=[p.itemVariant,...relatedVariants].filter(Boolean);
-            const modelOK=modelTerms.every(term=>variants.some(v=>variantMatchesTerm(v,term)));
+            const manualSids=getManualStockIdsForPurchase(p);
+            const stockIds=uniq([p.stockId,variantToStockId[p.itemVariant],variantToStockId[p.itemBrand],...manualSids]);
+            const relatedVariants=uniq([
+              p.itemVariant,
+              p.itemBrand,
+              p.stockId,
+              ...manualSids,
+              ...stockIds.flatMap(sid=>stockIdToVariants[sid]||[])
+            ]);
+            const modelOK=modelTerms.every(term=>relatedVariants.some(v=>variantMatchesTerm(v,term)));
             if(!modelOK) return false;
-            const computedStockId=getStockId(catalog, p.itemCat, p.itemBrand, p.itemVariant);
-            const itemHaystack=normalizeSearchText([p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.stockId,computedStockId,p.vendorName,p.note].filter(Boolean).join(" "));
+            const itemHaystack=normalizeSearchText([p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.stockId,...manualSids,p.vendorName,p.note].filter(Boolean).join(" "));
             return genericTokens.every(t=>itemHaystack.includes(t));
           }).sort((a,b)=>(a.date||"").localeCompare(b.date||"")).slice(0,30);
           return(
