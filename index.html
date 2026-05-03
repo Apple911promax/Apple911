@@ -19,8 +19,9 @@
       .model-row .stock-id-badge{flex:1 1 100% !important;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
       .model-row .model-btns{flex:1 1 100% !important;display:flex;justify-content:flex-end;gap:8px;}
       .model-row .model-btns button{min-height:36px;min-width:36px;}
-      .stock-id-row{flex-wrap:wrap !important;}
-      .stock-id-row input{min-width:0 !important;word-break:break-all;}
+      .stock-id-row{flex-wrap:wrap !important;padding-left:10px !important;gap:4px !important;}
+      .stock-id-row span{flex:1 1 100% !important;}
+      .stock-id-row input{flex:1 1 100% !important;width:100% !important;min-width:0 !important;box-sizing:border-box !important;}
     }
   </style>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -1672,6 +1673,50 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
   }
   function del(id){if(!confirm("確定刪除？"))return;const next=purchases.filter(p=>p.id!==id);setPurchases(next);save(SK.purchases,next);}
   function startEdit(p){setEditId(p.id);setEditForm({...p,amount:String(p.amount),qty:String(p.qty||1)});}
+
+  // ── 批次進貨模式 ─────────────────────────────────────────────────────────────
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchText, setBatchText] = useState("");
+
+  function submitBatch(){
+    if(!batchText.trim()) return;
+    const vendorName = form.vendor==="_custom" ? form.customVendor : form.vendor;
+    const itemCat    = form.itemCat==="_custom"  ? (form._customCat||"").trim() : form.itemCat;
+    if(!form.amount || !itemCat){ console.log("[批次進貨] 請先填寫品項與金額"); return; }
+    const lines = batchText.split("\n").map(l=>l.trim()).filter(Boolean);
+    const recs = [];
+    lines.forEach(line=>{
+      // 格式：型號+顏色 x數量，例：16 Pro Max 黑 x2
+      const m = line.match(/^(.+?)\s+x(\d+)\s*$/i);
+      if(!m){ console.log("[批次進貨] 無法解析，跳過：", line); return; }
+      const variantRaw = m[1].trim();
+      const qty = Number(m[2]) || 1;
+      // 嘗試拆分最後一個空格前為型號、後為顏色；若無空格則全部當 variant
+      const spIdx = variantRaw.lastIndexOf(" ");
+      const itemVariant = spIdx>0 ? variantRaw.slice(0,spIdx).trim() : variantRaw;
+      const noteColor   = spIdx>0 ? variantRaw.slice(spIdx+1).trim()  : "";
+      recs.push({
+        id: uid(),
+        date: form.date,
+        vendor: form.vendor,
+        customVendor: form.customVendor,
+        vendorName,
+        itemCat,
+        itemName: itemCat,
+        itemBrand: form.itemBrand,
+        itemSeries: form.itemSeries,
+        itemVariant,
+        qty,
+        amount: Number(form.amount),
+        note: noteColor || form.note,
+      });
+    });
+    if(!recs.length){ console.log("[批次進貨] 沒有成功解析的行"); return; }
+    const next = [...purchases, ...recs];
+    setPurchases(next); save(SK.purchases, next);
+    setBatchText("");
+    console.log(`[批次進貨] 已新增 ${recs.length} 筆`);
+  }
   function saveEdit(){
     if(!editForm?.amount)return;
     const itemVariant=editForm.itemVariant==="__custom"?(editForm._customVariant||""):editForm.itemVariant;
@@ -1780,7 +1825,29 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
         </div>
         {form.amount&&Number(form.qty)>1&&<div style={{color:C.textDim,fontSize:11,marginTop:-6,marginBottom:8}}>單價：{fmt(Math.round(Number(form.amount)/Number(form.qty)))} / 件</div>}
         <Input label="備註（選填）" value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))}/>
-        <Btn onClick={addToCart}>＋ 加入清單</Btn>
+        {/* 批次輸入模式開關 */}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+          <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",color:C.textMid,fontSize:13}}>
+            <input type="checkbox" checked={batchMode} onChange={e=>setBatchMode(e.target.checked)} style={{cursor:"pointer"}}/>
+            📋 批次輸入模式
+          </label>
+          {batchMode&&<span style={{color:C.textDim,fontSize:11}}>每行格式：型號 顏色 x數量</span>}
+        </div>
+
+        {batchMode ? (
+          <div>
+            <textarea
+              value={batchText}
+              onChange={e=>setBatchText(e.target.value)}
+              placeholder={"16 Pro Max 黑 x2\n15 Pro 炫彩 x3\n13 Mini 金 x1"}
+              rows={6}
+              style={{width:"100%",background:"rgba(0,20,60,0.6)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"10px 12px",fontSize:13,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}
+            />
+            <Btn onClick={submitBatch} style={{marginTop:6,width:"100%"}}>📋 批次新增進貨</Btn>
+          </div>
+        ) : (
+          <Btn onClick={addToCart}>＋ 加入清單</Btn>
+        )}
 
         {/* 購物車 */}
         {cart.length>0&&(
