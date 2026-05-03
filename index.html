@@ -865,7 +865,13 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
               modelTerms.push(term);
             }
           }
-          const genericTokens=qTokens.filter(t=>!/^\d+$/.test(t)&&!modelSuffixes.has(t));
+          function isCatToken(token){
+            const catNames=(catalog.purchaseCategories||[]).map(c=>normalizeSearchText(c.cat)).filter(Boolean);
+            return catNames.some(cat=>cat.includes(token)||token.includes(cat));
+          }
+          const nonModelTokens=qTokens.filter(t=>!/^\d+$/.test(t)&&!modelSuffixes.has(t));
+          const catTokens=nonModelTokens.filter(t=>isCatToken(t));
+          const genericTokens=nonModelTokens.filter(t=>!isCatToken(t));
           function variantMatchesTerm(variant,term){
             const vt=normalizeSearchText(variant).split(" ").filter(Boolean);
             if(!term.length) return true;
@@ -876,8 +882,10 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
                 if(vt[i+j]!==term[j]){ok=false;break;}
               }
               if(!ok) continue;
-              // 搜 14 Pro 時，不要匹配 14 Pro Max；搜 14 時可匹配 14/14 Pro/14 Pro Max。
+              // 搜 14 Pro 時，不要匹配 14 Pro Max
               if(term.length>1&&term[term.length-1]==="pro"&&vt[i+term.length]==="max") continue;
+              // 搜純數字時，後面不可跟任何 modelSuffix（例如搜 13 不可匹配 13 mini / 13 pro）
+              if(term.length===1&&/^\d+$/.test(term[0])&&modelSuffixes.has(vt[i+1])) continue;
               return true;
             }
             return false;
@@ -896,6 +904,9 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
             ]);
             const modelOK=modelTerms.every(term=>relatedVariants.some(v=>variantMatchesTerm(v,term)));
             if(!modelOK) return false;
+            const catHaystack=normalizeSearchText([p.itemCat,p.itemName].filter(Boolean).join(" "));
+            const catOK=catTokens.every(t=>catHaystack.includes(t));
+            if(!catOK) return false;
             const itemHaystack=normalizeSearchText([p.itemCat,p.itemName,p.itemBrand,p.itemVariant,p.stockId,...manualSids,p.vendorName,p.note].filter(Boolean).join(" "));
             return genericTokens.every(t=>itemHaystack.includes(t));
           }).sort((a,b)=>(a.date||"").localeCompare(b.date||"")).slice(0,30);
