@@ -4026,13 +4026,22 @@ function UsedPhonesPage() {
     refresh();
   }
 
-  // ── 新增整修成本（prompt 簡化版）────────────────────────────────────────────
+  // ── 新增整修成本（inline form） ─────────────────────────────────────────────
+  const [costFormId, setCostFormId] = useState(null);
+  const [costForm,   setCostForm]   = useState({name:"", amount:""});
+
   function handleAddCost(id) {
-    const name = prompt("整修項目名稱：");
-    if (!name) return;
-    const amt = prompt("金額（NT$）：");
-    if (!amt || isNaN(Number(amt))) { alert("請輸入有效金額"); return; }
-    addUsedPhoneRepairCost(id, { name: name.trim(), amount: Number(amt) });
+    // 同一筆再點一次 → 收起
+    if (costFormId === id) { setCostFormId(null); setCostForm({name:"",amount:""}); return; }
+    setCostFormId(id);
+    setCostForm({name:"", amount:""});
+  }
+  function handleCostSubmit(id) {
+    if (!costForm.name.trim()) return;
+    if (!costForm.amount || isNaN(Number(costForm.amount))) return;
+    addUsedPhoneRepairCost(id, { name: costForm.name.trim(), amount: Number(costForm.amount) });
+    setCostFormId(null);
+    setCostForm({name:"", amount:""});
     refresh();
   }
 
@@ -4179,7 +4188,10 @@ function UsedPhonesPage() {
             {/* 操作按鈕 */}
             <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
               <Btn v="ghost" sm onClick={e=>{e.stopPropagation();handleEdit(phone);}}>✏️ 編輯</Btn>
-              <Btn v="ghost" sm onClick={e=>{e.stopPropagation();handleAddCost(phone.id);}}>＋成本</Btn>
+              <Btn v="ghost" sm onClick={e=>{e.stopPropagation();handleAddCost(phone.id);}}
+                style={costFormId===phone.id?{border:`1px solid ${C.accent}`,color:C.accent}:{}}>
+                {costFormId===phone.id?"✕ 取消成本":"＋成本"}
+              </Btn>
               {phone.status !== "已售出" && (
                 <Btn sm onClick={e=>{e.stopPropagation();handleSell(phone.id);}} style={{background:"rgba(0,200,120,0.18)",border:`1px solid ${C.green}`,color:C.green}}>設為已售出</Btn>
               )}
@@ -4190,6 +4202,33 @@ function UsedPhonesPage() {
                 <Btn v="ghost" sm onClick={e=>{e.stopPropagation();updateUsedPhone(phone.id,{status:"庫存中"});refresh();}}>設回庫存</Btn>
               )}
             </div>
+
+            {/* 新增成本 inline form */}
+            {costFormId===phone.id && (
+              <div onClick={e=>e.stopPropagation()} style={{
+                marginTop:10,padding:"12px 14px",borderRadius:10,
+                background:"rgba(0,30,80,0.45)",border:`1px solid ${C.borderHi}`,
+              }}>
+                <div style={{color:C.accent,fontWeight:700,fontSize:12,marginBottom:8}}>＋ 新增整修成本</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                  <Input label="項目名稱 *" value={costForm.name}
+                    onChange={e=>setCostForm(f=>({...f,name:e.target.value}))}
+                    onKeyDown={e=>e.key==="Enter"&&handleCostSubmit(phone.id)}
+                    placeholder="例：換電池"
+                    style={{marginBottom:0}}/>
+                  <Input label="金額 NT$ *" type="number" inputMode="numeric"
+                    value={costForm.amount}
+                    onChange={e=>setCostForm(f=>({...f,amount:e.target.value}))}
+                    onKeyDown={e=>e.key==="Enter"&&handleCostSubmit(phone.id)}
+                    placeholder="0"
+                    style={{marginBottom:0}}/>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <Btn sm onClick={e=>{e.stopPropagation();handleCostSubmit(phone.id);}}>✓ 確認</Btn>
+                  <Btn sm v="ghost" onClick={e=>{e.stopPropagation();setCostFormId(null);setCostForm({name:"",amount:""});}}>取消</Btn>
+                </div>
+              </div>
+            )}
           </Card>
         );
       })}
