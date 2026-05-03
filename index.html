@@ -767,6 +767,10 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
   const [purOpen,setPurOpen] = useState(false);
   const [selSeries,setSelSeries] = useState("");
 
+  // ── 二手機庫存選擇 ───────────────────────────────────────────────────────────
+  const [selUsedPhoneId, setSelUsedPhoneId] = useState(editOrder?.usedPhoneId||null);
+  const stockUsedPhones = loadUsedPhones().filter(p=>p.status==="庫存中");
+
   const brandObj  = catalog.brands.find(b=>b.id===brand);
   const allSeries = brandObj?.series || (brandObj?.models ? [{name:"全部型號", models:brandObj.models}] : []);
   const modelList = allSeries.flatMap(s=>s.models);
@@ -907,7 +911,29 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
   function handleSave(){
     if(items.length===0){alert("請至少新增一個維修或配件項目");return;}
     if(isMixed&&(Number(cashAmt)||0)+(Number(linePayAmt)||0)!==totalRevenue){alert("現金金額 + Line Pay 金額必須等於總金額");return;}
-    onSave({id:editOrder?.id||uid(),date,brand,brandName,model,modelFree,modelName,customer,note,payments,vendors,items,photos,totalRevenue,totalCost,linePayFee,linePayTax,linePayTotal,profit,linePayAmt:isMixed?(Number(linePayAmt)||0):undefined,cashAmt:isMixed?(Number(cashAmt)||0):undefined,createdAt:editOrder?.createdAt||Date.now()});
+    // 若有選取二手機，儲存工單後標記為已售出
+    if(selUsedPhoneId){
+      markUsedPhoneSold(selUsedPhoneId,{salePrice:totalRevenue||0,saleDate:date,buyerNote:customer||""});
+    }
+    onSave({id:editOrder?.id||uid(),date,brand,brandName,model,modelFree,modelName,customer,note,payments,vendors,items,photos,totalRevenue,totalCost,linePayFee,linePayTax,linePayTotal,profit,usedPhoneId:selUsedPhoneId||undefined,linePayAmt:isMixed?(Number(linePayAmt)||0):undefined,cashAmt:isMixed?(Number(cashAmt)||0):undefined,createdAt:editOrder?.createdAt||Date.now()});
+  }
+
+  function handleSelectUsedPhone(id){
+    setSelUsedPhoneId(id||null);
+    if(!id){
+      // 取消選取：移除之前帶入的二手機成本項目
+      setItems(prev=>prev.filter(i=>i.id!=="__usedphone__"));
+      return;
+    }
+    const phone = stockUsedPhones.find(p=>p.id===id);
+    if(!phone) return;
+    // 帶入成本項目（唯一 id 方便後續取消替換）
+    setItems(prev=>{
+      const without = prev.filter(i=>i.id!=="__usedphone__");
+      return [...without,{id:"__usedphone__",name:`二手機（${phone.model}）`,cat:"二手機",stockItem:"",cost:phone.purchasePrice||0,qty:1}];
+    });
+    // 型號尚未選擇時自動帶入
+    if(!model && !modelFree) setModelFree(phone.model);
   }
 
   return (
@@ -1011,6 +1037,33 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
             )}
           </div>
         )}
+      </Card>
+
+      {/* 使用庫存二手機（可選） */}
+      <Card style={{marginBottom:0}}>
+        <H>📱 使用庫存二手機（可選）</H>
+        <select
+          value={selUsedPhoneId||""}
+          onChange={e=>handleSelectUsedPhone(e.target.value)}
+          style={{...selBase,width:"100%",marginBottom:selUsedPhoneId?8:0}}
+        >
+          <option value="">— 不使用庫存二手機 —</option>
+          {stockUsedPhones.map(p=>(
+            <option key={p.id} value={p.id}>
+              {p.model}　NT${(p.purchasePrice||0).toLocaleString()}　{p.purchaseDate||"未記錄"}
+            </option>
+          ))}
+        </select>
+        {selUsedPhoneId&&(()=>{
+          const ph=stockUsedPhones.find(p=>p.id===selUsedPhoneId);
+          return ph?(
+            <div style={{color:C.textDim,fontSize:11}}>
+              已選：<span style={{color:C.accent,fontWeight:700}}>{ph.model}</span>　
+              收購成本 <span style={{color:C.gold,fontWeight:700}}>NT${(ph.purchasePrice||0).toLocaleString()}</span>　
+              儲存工單後自動標記為「已售出」
+            </div>
+          ):null;
+        })()}
       </Card>
 
       {/* 廠商 */}
@@ -4120,7 +4173,7 @@ function LookupPage() {
 }
 
 // ─── USED PHONES PAGE (二手機管理) ────────────────────────────────────────────
-function UsedPhonesPage() {
+function UsedPhonesPage({orders}) {
   const [phones, setPhones] = useState(() => loadUsedPhones());
   const [form, setForm] = useState({ model:"", purchasePrice:"", source:"", note:"", purchaseDate:today() });
 
@@ -4275,10 +4328,17 @@ function UsedPhonesPage() {
 
       {[...phones].reverse().map((phone, ri) => {
         const displayId  = phones.length - ri;
-        const totalCost  = getUsedPhoneTotalCost(phone);
-        const profit     = getUsedPhoneProfit(phone);
-        const repTotal   = getUsedPhoneTotalRepairCost(phone);
-        const sc         = statusColor[phone.status] || C.textMid;
+        // 關聯工單：從工單中找出使用此二手機的工單
+        const linkedOrders = (orders||[]).filter(o=>o.usedPhoneId===phone.id);
+        // 工單整修成本 = 關聯工單的 totalCost 加總
+        const orderRepairCost = linkedOrders.reduce((a,o)=>a+(Number(o.totalCost)||0), 0);
+        // 總整修成本 = 工單成本 + 舊有 repairCosts（相容舊資料）
+        const legacyRepCost  = getUsedPhoneTotalRepairCost(phone);
+        const repTotal       = orderRepairCost + legacyRepCost;
+        const totalCost      = (Number(phone.purchasePrice)||0) + repTotal;
+        const profit         = phone.status==="已售出" && phone.saleInfo
+          ? (Number(phone.saleInfo.salePrice)||0) - totalCost : null;
+        const sc             = statusColor[phone.status] || C.textMid;
         return (
           <Card key={phone.id} style={{marginBottom:10}}>
             {/* 頂列：編號 / 型號 / 狀態 / 刪除 */}
@@ -4318,9 +4378,30 @@ function UsedPhonesPage() {
             {phone.source && <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>📍 來源：{phone.source}</div>}
             {phone.note   && <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>📝 {phone.note}</div>}
 
-            {/* 整修成本明細 */}
+            {/* 整修紀錄（來自工單） */}
+            {linkedOrders.length > 0 && (
+              <div style={{background:"rgba(0,20,60,0.4)",borderRadius:8,padding:"7px 11px",marginBottom:8}}>
+                <div style={{color:C.textDim,fontSize:11,fontWeight:600,marginBottom:4}}>🔧 整修紀錄（工單）</div>
+                {linkedOrders.map((o,oi)=>(
+                  <div key={o.id}>
+                    {(o.items||[]).map((item,ii)=>(
+                      <div key={ii} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.textMid,padding:"2px 0",borderBottom:`1px solid ${C.border}`}}>
+                        <span>{item.name}</span>
+                        <span style={{color:C.gold,fontWeight:700}}>{fmt((Number(item.cost)||0)*(Number(item.qty)||1))}</span>
+                      </div>
+                    ))}
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.textDim,padding:"3px 0",borderBottom:oi<linkedOrders.length-1?`1px solid ${C.borderHi}`:"none"}}>
+                      <span>{o.date} 工單合計</span>
+                      <span style={{color:C.accent,fontWeight:700}}>{fmt(Number(o.totalCost)||0)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* 舊有 repairCosts（相容舊資料） */}
             {(phone.repairCosts||[]).length > 0 && (
               <div style={{background:"rgba(0,20,60,0.4)",borderRadius:8,padding:"7px 11px",marginBottom:8}}>
+                <div style={{color:C.textDim,fontSize:11,fontWeight:600,marginBottom:4}}>🔧 手動整修成本</div>
                 {(phone.repairCosts||[]).map((c,i)=>(
                   <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.textMid,padding:"2px 0",borderBottom:i<phone.repairCosts.length-1?`1px solid ${C.border}`:"none"}}>
                     <span>{c.name}{c.note?` (${c.note})`:""}</span>
@@ -4654,7 +4735,7 @@ function App() {
         {page==="lookup"   &&<LookupPage/>}
         {page==="vendors"  &&<VendorPage catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}}/>}
         {page==="quote"    &&<QuotePage catalog={catalog} stock={stock}/>}
-        {page==="usedPhones" &&<UsedPhonesPage/>}
+        {page==="usedPhones" &&<UsedPhonesPage orders={orders}/>}
         {page==="admin"    &&<AdminPage     catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} isBoss={role==="boss"} orders={orders} setOrders={setOrders}/>}
       </div>
 
