@@ -802,6 +802,18 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
               });
             });
           });
+          const groupKeyToVariants={};
+          (catalog.purchaseCategories||[]).forEach(catObj=>{
+            (catObj.brands||[]).forEach(bObj=>{
+              (bObj.series||[]).forEach(sObj=>{
+                const ids=sObj.stockIds||{};
+                Object.entries(ids).forEach(([model,key])=>{
+                  if(!groupKeyToVariants[key]) groupKeyToVariants[key]=[];
+                  if(!groupKeyToVariants[key].includes(model)) groupKeyToVariants[key].push(model);
+                });
+              });
+            });
+          });
           function getRelatedVariants(variant){
             if(!variant) return [];
             const sid=variantToStockId[variant];
@@ -828,9 +840,9 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
             return found;
           }
           function uniq(arr){return [...new Set((arr||[]).filter(Boolean))];}
-          // 找進貨紀錄已手動設定的 stockId：有些資料會把型號存在 itemBrand，有些存在 itemVariant，兩邊都要查。
+          // 找進貨紀錄已手動設定的 stockId：只用 itemVariant 比對，itemBrand 是品牌名不是型號
           function getManualStockIdsForPurchase(p){
-            const candidates=uniq([p.itemVariant,p.itemBrand]);
+            const candidates=uniq([p.itemVariant]);
             const ids=[];
             if(!p.itemCat||!candidates.length) return ids;
             (catalog.purchaseCategories||[]).forEach(catObj=>{
@@ -894,16 +906,20 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
             if((usageCount[p.id]||0)>=(p.qty||1)) return false;
             if(!qTokens.length) return true;
             const manualSids=getManualStockIdsForPurchase(p);
-            const stockIds=uniq([p.stockId,variantToStockId[p.itemVariant],variantToStockId[p.itemBrand],...manualSids]);
-            const relatedVariants=uniq([
+            const stockIds=uniq([p.stockId,variantToStockId[p.itemVariant],...manualSids]);
+            // 型號比對用：只保留含數字的真正型號，移除品牌名/ID等非型號字串
+            const modelVariants=uniq([
               p.itemVariant,
-              p.itemBrand,
-              p.stockId,
-              ...manualSids,
-              ...stockIds.flatMap(sid=>stockIdToVariants[sid]||[])
-            ]);
-            const modelOK=modelTerms.every(term=>relatedVariants.some(v=>variantMatchesTerm(v,term)));
+              ...stockIds.flatMap(sid=>stockIdToVariants[sid]||[]),
+              ...(()=>{
+                const gk=variantToStockId[p.itemVariant];
+                return gk?(groupKeyToVariants[gk]||[]):[];
+              })()
+            ]).filter(v=>/\d/.test(normalizeSearchText(v)));
+            const modelOK=modelTerms.every(term=>modelVariants.some(v=>variantMatchesTerm(v,term)));
             if(!modelOK) return false;
+            // haystack 用：保留 itemBrand 供關鍵字搜尋
+            const relatedVariants=uniq([...modelVariants,p.itemBrand]);
             const catHaystack=normalizeSearchText([p.itemCat,p.itemName].filter(Boolean).join(" "));
             const catOK=catTokens.every(t=>catHaystack.includes(t));
             if(!catOK) return false;
