@@ -1235,6 +1235,11 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
                         // 刪除或取消工單時，因為庫存是由 orders 重新計算，會自動補回。
                         const stockId = getStockId(catalog, p.itemCat, p.itemBrand, p.itemVariant);
                         setItems(prev=>[...prev,{id:"pur_"+p.id+"_"+Date.now(),name,cat:"進貨帶入",stockItem:p.itemCat||"",stockId,stockModel:p.itemVariant||"",cost:unitCost,qty:1,autoPrice:true,purId:p.id,noModelReplace:isChargingCable}]);
+                        // 同步帶入廠商：找 vendorList 中與進貨廠商名稱匹配的項目並選取
+                        if (p.vendorName) {
+                          const matched = vendorList.find(v=>(p.vendorName||"").includes(v)||(v||"").includes(p.vendorName));
+                          if (matched && !vendors.includes(matched)) setVendors(vs=>[...vs, matched]);
+                        }
                         // 只有在尚未選擇維修型號時，才用進貨型號幫忙帶入；避免把原本選的 iPhone 12 改成 iPhone 12 Pro。
                         if(!modelName && p.itemVariant){
                           const allMF=(catalog.brands||[]).flatMap(b=>(b.series||[]).flatMap(s=>s.models.map(m=>({model:m,brandId:b.id,seriesName:s.name}))));
