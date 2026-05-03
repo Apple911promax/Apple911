@@ -528,6 +528,8 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
   const [items,setItems]       = useState(editOrder?.items||[]);
   const [photos,setPhotos]     = useState(editOrder?.photos||[]);
   const [totalPrice,setTotalPrice] = useState(editOrder?.totalRevenue||"");
+  const [linePayAmt,setLinePayAmt] = useState(editOrder?.linePayAmt!==undefined?String(editOrder.linePayAmt):"");
+  const [cashAmt,setCashAmt]       = useState(editOrder?.cashAmt!==undefined?String(editOrder.cashAmt):"");
   const [custItem,setCustItem] = useState({name:"",cost:""});
   const [purSearch,setPurSearch] = useState("");
   const [purOpen,setPurOpen] = useState(false);
@@ -662,14 +664,18 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
   const totalRevenue= Number(totalPrice)||0;
   const totalCost   = items.reduce((a,i)=>a+(Number(i.cost)||0)*(Number(i.qty)||1),0);
   const isLinePay   = payments.some(p=>String(p||"").replace(/\s+/g,"").toLowerCase()==="linepay");
-  const linePayFee  = isLinePay ? Math.round(totalRevenue*0.03) : 0;
+  const isCash      = payments.some(p=>p==="現金");
+  const isMixed     = isLinePay && isCash;
+  const linePayBase = isMixed ? (Number(linePayAmt)||0) : (isLinePay ? totalRevenue : 0);
+  const linePayFee  = isLinePay ? Math.round(linePayBase*0.03) : 0;
   const linePayTax  = isLinePay ? Math.round(linePayFee*0.05) : 0;
   const linePayTotal= linePayFee+linePayTax;
   const profit      = totalRevenue-totalCost-linePayTotal;
 
   function handleSave(){
     if(items.length===0){alert("請至少新增一個維修或配件項目");return;}
-    onSave({id:editOrder?.id||uid(),date,brand,brandName,model,modelFree,modelName,customer,note,payments,vendors,items,photos,totalRevenue,totalCost,linePayFee,linePayTax,linePayTotal,profit,createdAt:editOrder?.createdAt||Date.now()});
+    if(isMixed&&(Number(cashAmt)||0)+(Number(linePayAmt)||0)!==totalRevenue){alert("現金金額 + Line Pay 金額必須等於總金額");return;}
+    onSave({id:editOrder?.id||uid(),date,brand,brandName,model,modelFree,modelName,customer,note,payments,vendors,items,photos,totalRevenue,totalCost,linePayFee,linePayTax,linePayTotal,profit,linePayAmt:isMixed?(Number(linePayAmt)||0):undefined,cashAmt:isMixed?(Number(cashAmt)||0):undefined,createdAt:editOrder?.createdAt||Date.now()});
   }
 
   return (
@@ -756,6 +762,23 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
         <Chips options={payMethods} selected={payments} onToggle={togglePay}
           getStyle={(p,on)=>{const ps=PAY_STYLE[p]||{bd:C.borderHi,bg:"rgba(0,80,200,0.2)",tx:C.accent,ic:"💰"};return on?ps:{...ps};}}/>
         {payments.length>0&&<div style={{color:C.textDim,fontSize:11,marginTop:9}}>已選：{payments.map(p=>`${PAY_STYLE[p]?.ic||""}${p}`).join("  ＋  ")}</div>}
+        {isMixed&&(
+          <div style={{marginTop:12,display:"flex",gap:10,flexWrap:"wrap"}}>
+            <div>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>💵 現金收款金額</div>
+              <input type="number" inputMode="numeric" value={cashAmt} onChange={e=>setCashAmt(e.target.value)} placeholder="0"
+                style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,padding:"6px 10px",fontSize:14,width:130}}/>
+            </div>
+            <div>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>💳 Line Pay 收款金額</div>
+              <input type="number" inputMode="numeric" value={linePayAmt} onChange={e=>setLinePayAmt(e.target.value)} placeholder="0"
+                style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,padding:"6px 10px",fontSize:14,width:130}}/>
+            </div>
+            {totalRevenue>0&&(Number(cashAmt)||0)+(Number(linePayAmt)||0)!==totalRevenue&&(
+              <div style={{width:"100%",color:C.red,fontSize:11,marginTop:4}}>⚠️ 現金金額 + Line Pay 金額必須等於總金額（{fmt(totalRevenue)}）</div>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* 廠商 */}
