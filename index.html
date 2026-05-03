@@ -1919,7 +1919,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases}) {
 
   const [warnThreshold, setWarnThreshold] = useState(()=>Number(localLoad("inv_warn_threshold",2)));
   const [warnTab, setWarnTab] = useState("全部");
-  const [showWarn, setShowWarn] = useState(true);
+  const [showWarn, setShowWarn] = useState(false);
 
   const lowItems = Object.values(
     Object.fromEntries(
@@ -2788,6 +2788,64 @@ function EditableText({value, onSave, style}) {
 }
 
 // ─── ADMIN PAGE (PIN protected) ───────────────────────────────────────────────
+// ─── 廠商通訊錄管理元件（獨立元件，避免 Hook 在 render 中呼叫）─────────────
+function VendorAdmin({catalog, sc}) {
+  const [vf, setVf] = useState({name:"",phone:"",line:"",url:"",note:""});
+
+  function addVB() {
+    if (!vf.name.trim()) { alert("請輸入廠商名稱"); return; }
+    const next = [...(catalog.vendorBook||[]), {...vf, id:uid()}];
+    sc({...catalog, vendorBook: next});
+    setVf({name:"",phone:"",line:"",url:"",note:""});
+  }
+  function editVB(v) {
+    const name  = prompt("廠商名稱：",     v.name  ||""); if (name===null) return;
+    const phone = prompt("電話：",         v.phone ||""); if (phone===null) return;
+    const line  = prompt("LINE ID：",      v.line  ||""); if (line===null) return;
+    const url   = prompt("網站/訂購連結：",v.url   ||""); if (url===null) return;
+    const note  = prompt("備註：",         v.note  ||""); if (note===null) return;
+    const next  = (catalog.vendorBook||[]).map(x=>x.id===v.id?{...x,name:name.trim(),phone:phone.trim(),line:line.trim(),url:url.trim(),note:note.trim()}:x);
+    sc({...catalog, vendorBook: next});
+  }
+  function delVB(id) {
+    if (!confirm("確定刪除此廠商？")) return;
+    sc({...catalog, vendorBook: (catalog.vendorBook||[]).filter(x=>x.id!==id)});
+  }
+
+  return (
+    <Card hi style={{marginBottom:12}}>
+      <H>🏪 廠商通訊錄管理</H>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <Input label="廠商名稱 *" value={vf.name}  onChange={e=>setVf(f=>({...f,name:e.target.value}))}/>
+        <Input label="電話"       value={vf.phone} onChange={e=>setVf(f=>({...f,phone:e.target.value}))}/>
+        <Input label="LINE ID"    value={vf.line}  onChange={e=>setVf(f=>({...f,line:e.target.value}))}/>
+        <Input label="🔗 網站/訂購連結" value={vf.url} onChange={e=>setVf(f=>({...f,url:e.target.value}))}/>
+      </div>
+      <Input label="備註" value={vf.note} onChange={e=>setVf(f=>({...f,note:e.target.value}))}/>
+      <Btn sm onClick={addVB}>＋ 新增廠商</Btn>
+      {(catalog.vendorBook||[]).length > 0 && (
+        <div style={{marginTop:12}}>
+          {(catalog.vendorBook||[]).map(v=>(
+            <div key={v.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div>
+                <span style={{color:C.gold,fontWeight:700,fontSize:13}}>{v.name}</span>
+                {v.phone&&<span style={{color:C.textDim,fontSize:11,marginLeft:8}}>📞 {v.phone}</span>}
+                {v.line&&<span style={{color:C.textDim,fontSize:11,marginLeft:8}}>💬 {v.line}</span>}
+                {v.note&&<div style={{color:C.textDim,fontSize:11}}>📝 {v.note}</div>}
+              </div>
+              <div style={{display:"flex",gap:6,flexShrink:0}}>
+                <button onClick={()=>editVB(v)} style={{background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:8,color:C.accent,cursor:"pointer",fontSize:12,padding:"5px 9px",fontFamily:"inherit"}}>✏️</button>
+                <button onClick={()=>delVB(v.id)} style={{background:"rgba(255,50,80,0.15)",border:"none",borderRadius:8,color:C.red,cursor:"pointer",fontSize:12,padding:"5px 9px",fontFamily:"inherit"}}>🗑️</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {(catalog.vendorBook||[]).length===0&&<div style={{color:C.textDim,fontSize:12,marginTop:10,textAlign:"center"}}>尚無廠商，新增第一個吧！</div>}
+    </Card>
+  );
+}
+
 function AdminPage({catalog,setCatalog,isBoss,orders,setOrders}) {
   const [unlocked,setUnlocked] = useState(false);
   const [pin,setPin]           = useState("");
@@ -3079,6 +3137,9 @@ function AdminPage({catalog,setCatalog,isBoss,orders,setOrders}) {
         })}
       </div>)}
       {tab==="vendors"&&(<div>
+        {/* ── 廠商通訊錄管理 ── */}
+        <VendorAdmin catalog={catalog} sc={sc}/>
+        {/* ── 零件廠商（原有） ── */}
         <Card><H>零件廠商</H>{addRow(nv,()=>{if(!nv)return;sc({...catalog,vendors:[...catalog.vendors,nv]});setNv("");},setNv,"廠商名稱")}<SortableList
           items={catalog.vendors||[]}
           onReorder={arr=>sc({...catalog,vendors:arr})}
@@ -3214,85 +3275,25 @@ const MAC_DATA = [
 // ─── VENDOR PAGE ──────────────────────────────────────────────────────────────
 function VendorPage({catalog, setCatalog}) {
   const vendors = catalog.vendorBook || [];
-  const [form, setForm] = useState({name:"", phone:"", line:"", url:"", note:""});
-  const [editId, setEditId] = useState(null);
-  const [editForm, setEditForm] = useState(null);
-
-  function saveVendors(v) { setCatalog({...catalog, vendorBook: v}); }
-
-  function addVendor() {
-    if (!form.name.trim()) return;
-    saveVendors([...vendors, {...form, id: uid()}]);
-    setForm({name:"", phone:"", line:"", url:"", note:""});
-  }
-
-  function deleteVendor(id) {
-    if (!confirm("確定刪除？")) return;
-    saveVendors(vendors.filter(v=>v.id!==id));
-  }
-
-  function startEdit(v) { setEditId(v.id); setEditForm({...v}); }
-  function saveEdit() {
-    saveVendors(vendors.map(v=>v.id===editId?{...editForm}:v));
-    setEditId(null); setEditForm(null);
-  }
 
   return (
     <div>
-      <Card hi style={{marginBottom:12}}>
-        <H>🏪 新增廠商</H>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <Input label="廠商名稱 *" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/>
-          <Input label="電話" value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))}/>
-          <Input label="LINE ID" value={form.line} onChange={e=>setForm(f=>({...f,line:e.target.value}))}/>
-          <Input label="🔗 網站/訂購連結" value={form.url} onChange={e=>setForm(f=>({...f,url:e.target.value}))}/>
-        </div>
-        <Input label="備註（常進品項等）" value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))}/>
-        <Btn onClick={addVendor}>＋ 新增廠商</Btn>
-      </Card>
-
       {vendors.length===0
-        ? <Card><div style={{color:C.textDim,textAlign:"center",padding:24}}>還沒有廠商資料，新增第一個吧！</div></Card>
+        ? <Card><div style={{color:C.textDim,textAlign:"center",padding:24}}>尚無廠商資料，請到後台新增。</div></Card>
         : vendors.map(v=>(
           <Card key={v.id} style={{marginBottom:8}}>
-            {editId===v.id ? (
-              <div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                  <Input label="廠商名稱" value={editForm.name} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))}/>
-                  <Input label="電話" value={editForm.phone} onChange={e=>setEditForm(f=>({...f,phone:e.target.value}))}/>
-                  <Input label="LINE ID" value={editForm.line} onChange={e=>setEditForm(f=>({...f,line:e.target.value}))}/>
-                  <Input label="🔗 網站/訂購連結" value={editForm.url} onChange={e=>setEditForm(f=>({...f,url:e.target.value}))}/>
-                </div>
-                <Input label="備註" value={editForm.note} onChange={e=>setEditForm(f=>({...f,note:e.target.value}))}/>
-                <div style={{display:"flex",gap:8}}>
-                  <Btn sm onClick={saveEdit}>✓ 儲存</Btn>
-                  <Btn v="ghost" sm onClick={()=>setEditId(null)}>取消</Btn>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                  <div style={{flex:1}}>
-                    <div style={{color:C.gold,fontWeight:800,fontSize:15,marginBottom:4}}>{v.name}</div>
-                    <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-                      {v.phone&&<span style={{color:C.textMid,fontSize:12}}>📞 {v.phone}</span>}
-                      {v.line&&<span style={{color:C.textMid,fontSize:12}}>💬 {v.line}</span>}
-                    </div>
-                    {v.url&&(
-                      <a href={v.url.startsWith("http")?v.url:"https://"+v.url} target="_blank" rel="noopener noreferrer"
-                        style={{color:C.accent,fontSize:12,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4,marginTop:4}}>
-                        🔗 前往訂購網站
-                      </a>
-                    )}
-                    {v.note&&<div style={{color:C.textDim,fontSize:11,marginTop:4}}>📝 {v.note}</div>}
-                  </div>
-                  <div style={{display:"flex",gap:6,flexShrink:0}}>
-                    <button onClick={()=>startEdit(v)} style={{background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:8,color:C.accent,cursor:"pointer",fontSize:13,padding:"6px 10px",fontFamily:"inherit"}}>✏️</button>
-                    <button onClick={()=>deleteVendor(v.id)} style={{background:"rgba(255,50,80,0.15)",border:"none",borderRadius:8,color:C.red,cursor:"pointer",fontSize:13,padding:"6px 10px",fontFamily:"inherit"}}>🗑️</button>
-                  </div>
-                </div>
-              </div>
+            <div style={{color:C.gold,fontWeight:800,fontSize:15,marginBottom:4}}>{v.name}</div>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:4}}>
+              {v.phone&&<span style={{color:C.textMid,fontSize:12}}>📞 {v.phone}</span>}
+              {v.line&&<span style={{color:C.textMid,fontSize:12}}>💬 {v.line}</span>}
+            </div>
+            {v.url&&(
+              <a href={v.url.startsWith("http")?v.url:"https://"+v.url} target="_blank" rel="noopener noreferrer"
+                style={{color:C.accent,fontSize:12,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4,marginBottom:4}}>
+                🔗 前往訂購網站
+              </a>
             )}
+            {v.note&&<div style={{color:C.textDim,fontSize:11,marginTop:2}}>📝 {v.note}</div>}
           </Card>
         ))
       }
@@ -3333,11 +3334,182 @@ function QuoteItem({item, onUpdate, onRemove, catalog}) {
   );
 }
 
+// ─── 系列報價表資料 ────────────────────────────────────────────────────────────
+const quoteSeriesData = [
+  {
+    seriesName: "iPhone 6 系列",
+    models: ["iPhone 6","iPhone 6 Plus","iPhone 6S","iPhone 6S Plus"],
+    items: [
+      { name:"Q哥螢幕",          prices:{"iPhone 6":1200,"iPhone 6 Plus":1200,"iPhone 6S":1200,"iPhone 6S Plus":1500} },
+      { name:"原廠螢幕",          prices:{"iPhone 6":2500,"iPhone 6 Plus":2800,"iPhone 6S":2800,"iPhone 6S Plus":3200} },
+      { name:"電池(保固6個月)",   prices:{"iPhone 6":600, "iPhone 6 Plus":600, "iPhone 6S":600, "iPhone 6S Plus":600} },
+      { name:"電池(終身保固)",    prices:{"iPhone 6":900, "iPhone 6 Plus":900, "iPhone 6S":900, "iPhone 6S Plus":900} },
+      { name:"尾部充電音頻總成",  prices:{"iPhone 6":800, "iPhone 6 Plus":800, "iPhone 6S":800, "iPhone 6S Plus":800} },
+      { name:"音量排線",          prices:{"iPhone 6":600, "iPhone 6 Plus":600, "iPhone 6S":600, "iPhone 6S Plus":600} },
+      { name:"開機排線",          prices:{"iPhone 6":600, "iPhone 6 Plus":600, "iPhone 6S":600, "iPhone 6S Plus":600} },
+      { name:"後鏡頭",            prices:{"iPhone 6":500, "iPhone 6 Plus":500, "iPhone 6S":600, "iPhone 6S Plus":600} },
+      { name:"前鏡頭+感光",       prices:{"iPhone 6":600, "iPhone 6 Plus":600, "iPhone 6S":700, "iPhone 6S Plus":700} },
+    ],
+  },
+  {
+    seriesName: "iPhone 7 / 8 系列",
+    models: ["iPhone 7","iPhone 7 Plus","iPhone 8","iPhone 8 Plus"],
+    items: [
+      { name:"Q哥螢幕",          prices:{"iPhone 7":1500,"iPhone 7 Plus":1800,"iPhone 8":1500,"iPhone 8 Plus":1800} },
+      { name:"原廠螢幕",          prices:{"iPhone 7":3200,"iPhone 7 Plus":3800,"iPhone 8":3200,"iPhone 8 Plus":3800} },
+      { name:"電池(保固6個月)",   prices:{"iPhone 7":700, "iPhone 7 Plus":700, "iPhone 8":700, "iPhone 8 Plus":700} },
+      { name:"電池(終身保固)",    prices:{"iPhone 7":1000,"iPhone 7 Plus":1000,"iPhone 8":1000,"iPhone 8 Plus":1000} },
+      { name:"尾部充電總成",      prices:{"iPhone 7":900, "iPhone 7 Plus":900, "iPhone 8":900, "iPhone 8 Plus":900} },
+      { name:"音量排線",          prices:{"iPhone 7":700, "iPhone 7 Plus":700, "iPhone 8":700, "iPhone 8 Plus":700} },
+      { name:"後鏡頭",            prices:{"iPhone 7":700, "iPhone 7 Plus":900, "iPhone 8":700, "iPhone 8 Plus":900} },
+      { name:"前鏡頭+感光",       prices:{"iPhone 7":800, "iPhone 7 Plus":800, "iPhone 8":800, "iPhone 8 Plus":800} },
+    ],
+  },
+  {
+    seriesName: "iPhone X 系列",
+    models: ["iPhone X","iPhone XS","iPhone XS Max","iPhone XR"],
+    items: [
+      { name:"Q哥螢幕",          prices:{"iPhone X":2500,"iPhone XS":2800,"iPhone XS Max":3500,"iPhone XR":2200} },
+      { name:"原廠螢幕",          prices:{"iPhone X":5500,"iPhone XS":6000,"iPhone XS Max":7000,"iPhone XR":4500} },
+      { name:"電池(保固6個月)",   prices:{"iPhone X":800, "iPhone XS":800, "iPhone XS Max":800, "iPhone XR":800} },
+      { name:"電池(終身保固)",    prices:{"iPhone X":1200,"iPhone XS":1200,"iPhone XS Max":1200,"iPhone XR":1200} },
+      { name:"尾部充電總成",      prices:{"iPhone X":1000,"iPhone XS":1000,"iPhone XS Max":1200,"iPhone XR":1000} },
+      { name:"後鏡頭",            prices:{"iPhone X":1200,"iPhone XS":1200,"iPhone XS Max":1500,"iPhone XR":900} },
+      { name:"前鏡頭+感光",       prices:{"iPhone X":1000,"iPhone XS":1000,"iPhone XS Max":1200,"iPhone XR":900} },
+    ],
+  },
+  {
+    seriesName: "iPhone 11 系列",
+    models: ["iPhone 11","iPhone 11 Pro","iPhone 11 Pro Max"],
+    items: [
+      { name:"Q哥螢幕",          prices:{"iPhone 11":2200,"iPhone 11 Pro":3500,"iPhone 11 Pro Max":4000} },
+      { name:"原廠螢幕",          prices:{"iPhone 11":4500,"iPhone 11 Pro":7500,"iPhone 11 Pro Max":8500} },
+      { name:"電池(保固6個月)",   prices:{"iPhone 11":900, "iPhone 11 Pro":900, "iPhone 11 Pro Max":900} },
+      { name:"電池(終身保固)",    prices:{"iPhone 11":1300,"iPhone 11 Pro":1300,"iPhone 11 Pro Max":1300} },
+      { name:"尾部充電總成",      prices:{"iPhone 11":1100,"iPhone 11 Pro":1200,"iPhone 11 Pro Max":1200} },
+      { name:"後鏡頭模組",        prices:{"iPhone 11":1500,"iPhone 11 Pro":2500,"iPhone 11 Pro Max":3000} },
+      { name:"前鏡頭+感光",       prices:{"iPhone 11":1100,"iPhone 11 Pro":1200,"iPhone 11 Pro Max":1200} },
+    ],
+  },
+  {
+    seriesName: "iPhone 12 系列",
+    models: ["iPhone 12 mini","iPhone 12","iPhone 12 Pro","iPhone 12 Pro Max"],
+    items: [
+      { name:"Q哥螢幕",          prices:{"iPhone 12 mini":2500,"iPhone 12":2800,"iPhone 12 Pro":3800,"iPhone 12 Pro Max":4500} },
+      { name:"原廠螢幕",          prices:{"iPhone 12 mini":5500,"iPhone 12":6000,"iPhone 12 Pro":8000,"iPhone 12 Pro Max":9500} },
+      { name:"電池(保固6個月)",   prices:{"iPhone 12 mini":1000,"iPhone 12":1000,"iPhone 12 Pro":1000,"iPhone 12 Pro Max":1000} },
+      { name:"電池(終身保固)",    prices:{"iPhone 12 mini":1500,"iPhone 12":1500,"iPhone 12 Pro":1500,"iPhone 12 Pro Max":1500} },
+      { name:"尾部充電總成",      prices:{"iPhone 12 mini":1200,"iPhone 12":1200,"iPhone 12 Pro":1300,"iPhone 12 Pro Max":1300} },
+      { name:"後鏡頭模組",        prices:{"iPhone 12 mini":1800,"iPhone 12":1800,"iPhone 12 Pro":3000,"iPhone 12 Pro Max":3500} },
+      { name:"前鏡頭+感光",       prices:{"iPhone 12 mini":1200,"iPhone 12":1200,"iPhone 12 Pro":1300,"iPhone 12 Pro Max":1300} },
+    ],
+  },
+  {
+    seriesName: "iPhone 13 系列",
+    models: ["iPhone 13 mini","iPhone 13","iPhone 13 Pro","iPhone 13 Pro Max"],
+    items: [
+      { name:"Q哥螢幕",          prices:{"iPhone 13 mini":2800,"iPhone 13":3000,"iPhone 13 Pro":4200,"iPhone 13 Pro Max":5000} },
+      { name:"原廠螢幕",          prices:{"iPhone 13 mini":6000,"iPhone 13":6500,"iPhone 13 Pro":9000,"iPhone 13 Pro Max":11000} },
+      { name:"電池(保固6個月)",   prices:{"iPhone 13 mini":1100,"iPhone 13":1100,"iPhone 13 Pro":1100,"iPhone 13 Pro Max":1100} },
+      { name:"電池(終身保固)",    prices:{"iPhone 13 mini":1600,"iPhone 13":1600,"iPhone 13 Pro":1600,"iPhone 13 Pro Max":1600} },
+      { name:"尾部充電總成",      prices:{"iPhone 13 mini":1300,"iPhone 13":1300,"iPhone 13 Pro":1400,"iPhone 13 Pro Max":1400} },
+      { name:"後鏡頭模組",        prices:{"iPhone 13 mini":2000,"iPhone 13":2000,"iPhone 13 Pro":3500,"iPhone 13 Pro Max":4000} },
+      { name:"前鏡頭+感光",       prices:{"iPhone 13 mini":1300,"iPhone 13":1300,"iPhone 13 Pro":1400,"iPhone 13 Pro Max":1400} },
+    ],
+  },
+  {
+    seriesName: "iPhone 14 系列",
+    models: ["iPhone 14","iPhone 14 Plus","iPhone 14 Pro","iPhone 14 Pro Max"],
+    items: [
+      { name:"Q哥螢幕",          prices:{"iPhone 14":3200,"iPhone 14 Plus":3800,"iPhone 14 Pro":5000,"iPhone 14 Pro Max":6000} },
+      { name:"原廠螢幕",          prices:{"iPhone 14":7000,"iPhone 14 Plus":8500,"iPhone 14 Pro":12000,"iPhone 14 Pro Max":14000} },
+      { name:"電池(保固6個月)",   prices:{"iPhone 14":1200,"iPhone 14 Plus":1200,"iPhone 14 Pro":1200,"iPhone 14 Pro Max":1200} },
+      { name:"電池(終身保固)",    prices:{"iPhone 14":1800,"iPhone 14 Plus":1800,"iPhone 14 Pro":1800,"iPhone 14 Pro Max":1800} },
+      { name:"尾部充電總成",      prices:{"iPhone 14":1500,"iPhone 14 Plus":1600,"iPhone 14 Pro":1600,"iPhone 14 Pro Max":1700} },
+      { name:"後鏡頭模組",        prices:{"iPhone 14":2500,"iPhone 14 Plus":3000,"iPhone 14 Pro":4500,"iPhone 14 Pro Max":5500} },
+      { name:"前鏡頭+感光",       prices:{"iPhone 14":1500,"iPhone 14 Plus":1600,"iPhone 14 Pro":1700,"iPhone 14 Pro Max":1800} },
+    ],
+  },
+  {
+    seriesName: "iPhone 15 系列",
+    models: ["iPhone 15","iPhone 15 Plus","iPhone 15 Pro","iPhone 15 Pro Max"],
+    items: [
+      { name:"Q哥螢幕",          prices:{"iPhone 15":3500,"iPhone 15 Plus":4200,"iPhone 15 Pro":5500,"iPhone 15 Pro Max":6500} },
+      { name:"原廠螢幕",          prices:{"iPhone 15":7500,"iPhone 15 Plus":9000,"iPhone 15 Pro":13000,"iPhone 15 Pro Max":15000} },
+      { name:"電池(保固6個月)",   prices:{"iPhone 15":1300,"iPhone 15 Plus":1300,"iPhone 15 Pro":1300,"iPhone 15 Pro Max":1300} },
+      { name:"電池(終身保固)",    prices:{"iPhone 15":1900,"iPhone 15 Plus":1900,"iPhone 15 Pro":1900,"iPhone 15 Pro Max":1900} },
+      { name:"尾部充電總成",      prices:{"iPhone 15":1600,"iPhone 15 Plus":1700,"iPhone 15 Pro":1800,"iPhone 15 Pro Max":1900} },
+      { name:"後鏡頭模組",        prices:{"iPhone 15":2800,"iPhone 15 Plus":3200,"iPhone 15 Pro":5000,"iPhone 15 Pro Max":6000} },
+      { name:"前鏡頭+感光",       prices:{"iPhone 15":1700,"iPhone 15 Plus":1800,"iPhone 15 Pro":2000,"iPhone 15 Pro Max":2200} },
+    ],
+  },
+];
+
+// ─── 插入線元件（排序用） ──────────────────────────────────────────────────────
+function InsertLine({ onClick, vertical }) {
+  const [hov, setHov] = useState(false);
+  if (vertical) {
+    return (
+      <div onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        style={{width:6,alignSelf:"stretch",minHeight:24,cursor:"pointer",borderRadius:4,flexShrink:0,
+          background:hov?"rgba(0,120,255,0.35)":"rgba(0,120,255,0.0)",
+          border:hov?"2px dashed #3b82f6":"2px dashed transparent",
+          transition:"all .15s",
+        }}/>
+    );
+  }
+  return (
+    <div onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{height:6,cursor:"pointer",borderRadius:4,margin:"2px 0",
+        background:hov?"rgba(0,120,255,0.35)":"rgba(0,120,255,0.0)",
+        border:hov?"2px dashed #3b82f6":"2px dashed transparent",
+        transition:"all .15s",
+      }}/>
+  );
+}
+
+// ─── 系列報價表元件 ────────────────────────────────────────────────────────────
+function SeriesPriceTable({ series }) {
+  const fmtP = n => n ? `NT$${Number(n).toLocaleString()}` : "-";
+  return (
+    <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth: series.models.length * 120 + 140}}>
+        <thead>
+          <tr>
+            <th style={{textAlign:"left",padding:"7px 10px",background:"rgba(0,40,100,0.5)",color:C.accent,fontWeight:700,fontSize:12,borderBottom:`1px solid ${C.borderHi}`,whiteSpace:"nowrap",minWidth:130,position:"sticky",left:0,zIndex:1}}>維修項目</th>
+            {series.models.map(m=>(
+              <th key={m} style={{padding:"7px 10px",background:"rgba(0,40,100,0.5)",color:C.text,fontWeight:700,fontSize:12,borderBottom:`1px solid ${C.borderHi}`,whiteSpace:"nowrap",textAlign:"center",minWidth:110}}>{m}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {series.items.map((item, ri)=>(
+            <tr key={item.name} style={{background:ri%2===0?"rgba(0,20,60,0.3)":"transparent"}}>
+              <td style={{padding:"7px 10px",color:C.textMid,whiteSpace:"nowrap",borderBottom:`1px solid ${C.border}`,position:"sticky",left:0,background:ri%2===0?"rgba(0,20,60,0.8)":"rgba(0,10,40,0.8)",zIndex:1}}>{item.name}</td>
+              {series.models.map(m=>{
+                const p = item.prices[m];
+                return (
+                  <td key={m} style={{padding:"7px 10px",textAlign:"center",color:p?C.text:C.textDim,fontWeight:p?600:400,borderBottom:`1px solid ${C.border}`,whiteSpace:"nowrap"}}>{fmtP(p)}</td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function QuotePage({catalog, stock}) {
+  // ── 內部報價試算 state ────────────────────────────────────────────────────────
   const [items, setItems] = useState([]);
   const [newItem, setNewItem] = useState({name:"", price:"", cost:""});
   const [isLinePay, setIsLinePay] = useState(false);
   const [note, setNote] = useState("");
+  // 試算快帶：從系列報價表選入
+  const [qSeries, setQSeries] = useState("");
+  const [qModel,  setQModel]  = useState("");
+  const [qItem,   setQItem]   = useState("");
 
   const totalPrice = items.reduce((a,i)=>a+i.price, 0);
   const totalCost  = items.reduce((a,i)=>a+i.cost, 0);
@@ -3350,12 +3522,178 @@ function QuotePage({catalog, stock}) {
     if (!newItem.name || !newItem.price) return;
     setItems(its=>[...its, {id:uid(), name:newItem.name, price:Number(newItem.price)||0, cost:Number(newItem.cost)||0}]);
     setNewItem({name:"", price:"", cost:""});
+    setQSeries(""); setQModel(""); setQItem("");
   }
+
+  // ── 系列報價表 state ─────────────────────────────────────────────────────────
+  const QS_KEY = "apple911_quoteSeriesData";
+  function loadSeriesData() {
+    try { const v=localStorage.getItem(QS_KEY); return v?JSON.parse(v):quoteSeriesData; } catch{ return quoteSeriesData; }
+  }
+  const [seriesData, setSeriesData] = useState(()=>loadSeriesData());
+  const [editMode,   setEditMode]   = useState(false);
+  const [draftData,  setDraftData]  = useState(null);
+  const [selSeries,  setSelSeries]  = useState(0);
+
+  // 共用：deep clone → 操作 → set
+  function draftUpdate(fn) {
+    setDraftData(d=>{ const next=JSON.parse(JSON.stringify(d)); fn(next); return next; });
+  }
+
+  function handleEnterEdit()  { setDraftData(JSON.parse(JSON.stringify(seriesData))); setEditMode(true); }
+  function handleCancelEdit() { setDraftData(null); setEditMode(false); }
+  function handleSaveSeries() {
+    try { localStorage.setItem(QS_KEY, JSON.stringify(draftData)); } catch{}
+    setSeriesData(draftData); setDraftData(null); setEditMode(false);
+  }
+
+  // ── 價格格子 ─────────────────────────────────────────────────────────────────
+  function handleDraftPrice(si, ii, model, val) {
+    draftUpdate(next=>{
+      if (val.trim()==="") delete next[si].items[ii].prices[model];
+      else next[si].items[ii].prices[model] = Number(val)||0;
+    });
+  }
+
+  // ── 系列管理 ─────────────────────────────────────────────────────────────────
+  function handleAddSeries() {
+    const name = prompt("新系列名稱："); if (!name||!name.trim()) return;
+    draftUpdate(next=>{ next.push({seriesName:name.trim(), models:[], items:[]}); });
+    setTimeout(()=>setSelSeries(draftData?draftData.length:0), 0);
+  }
+  function handleRenameSeries() {
+    const cur = draftData[selSeries].seriesName;
+    const name = prompt("系列新名稱：", cur); if (!name||!name.trim()) return;
+    draftUpdate(next=>{ next[selSeries].seriesName = name.trim(); });
+  }
+  function handleDeleteSeries() {
+    if (draftData.length<=1) { alert("至少保留一個系列"); return; }
+    if (!confirm(`確定刪除「${draftData[selSeries].seriesName}」系列？`)) return;
+    draftUpdate(next=>{ next.splice(selSeries,1); });
+    setSelSeries(s=>Math.max(0,s-1));
+  }
+
+  // ── 型號管理 ─────────────────────────────────────────────────────────────────
+  function handleAddModel() {
+    const name = prompt("新型號名稱："); if (!name||!name.trim()) return;
+    draftUpdate(next=>{ next[selSeries].models.push(name.trim()); });
+  }
+  function handleRenameModel(mi) {
+    const cur = draftData[selSeries].models[mi];
+    const name = prompt("型號新名稱：", cur); if (!name||!name.trim()) return;
+    draftUpdate(next=>{
+      next[selSeries].models[mi] = name.trim();
+      next[selSeries].items.forEach(item=>{
+        if (cur in item.prices) { item.prices[name.trim()]=item.prices[cur]; delete item.prices[cur]; }
+      });
+    });
+  }
+  function handleDeleteModel(mi) {
+    const mname = draftData[selSeries].models[mi];
+    if (!confirm(`確定刪除型號「${mname}」？`)) return;
+    draftUpdate(next=>{
+      next[selSeries].models.splice(mi,1);
+      next[selSeries].items.forEach(item=>{ delete item.prices[mname]; });
+    });
+  }
+
+  // ── 維修項目管理 ─────────────────────────────────────────────────────────────
+  function handleAddItem() {
+    const name = prompt("新維修項目名稱："); if (!name||!name.trim()) return;
+    draftUpdate(next=>{ next[selSeries].items.push({name:name.trim(), prices:{}}); });
+  }
+  function handleRenameItem(ii) {
+    const cur = draftData[selSeries].items[ii].name;
+    const name = prompt("項目新名稱：", cur); if (!name||!name.trim()) return;
+    draftUpdate(next=>{ next[selSeries].items[ii].name = name.trim(); });
+  }
+  function handleDeleteItem(ii) {
+    if (!confirm(`確定刪除項目「${draftData[selSeries].items[ii].name}」？`)) return;
+    draftUpdate(next=>{ next[selSeries].items.splice(ii,1); });
+  }
+
+  // ── 排序：選取後插入模式 ──────────────────────────────────────────────────────
+  // moveSel = { type:"series"|"model"|"item", idx:number } | null
+  const [moveSel, setMoveSel] = useState(null);
+
+  function insertAt(type, fromIdx, toIdx) {
+    if (fromIdx === toIdx) { setMoveSel(null); return; }
+    draftUpdate(next => {
+      let arr;
+      if (type === "series")  arr = next;
+      else if (type === "model") arr = next[selSeries].models;
+      else                       arr = next[selSeries].items;
+      const [removed] = arr.splice(fromIdx, 1);
+      const dest = toIdx > fromIdx ? toIdx - 1 : toIdx;
+      arr.splice(dest, 0, removed);
+      if (type === "series") {
+        // next 本身已是同一個陣列參照，splice 已修改
+      }
+    });
+    if (type === "series") setSelSeries(toIdx > fromIdx ? toIdx - 1 : toIdx);
+    setMoveSel(null);
+  }
+
+  // 插入線共用樣式由 InsertLine 元件處理
+
+  // ── 試算快帶：從系列報價表選入 ───────────────────────────────────────────────
+  const qSeriesObj  = seriesData.find(s=>s.seriesName===qSeries)||null;
+  const qItemObj    = qSeriesObj?.items.find(it=>it.name===qItem)||null;
+  const qAutoPrice  = (qItemObj&&qModel&&qItemObj.prices[qModel]) ? qItemObj.prices[qModel] : null;
+
+  function handleQItemSelect(itemName) {
+    setQItem(itemName);
+    if (!qSeriesObj||!qModel) return;
+    const it = qSeriesObj.items.find(x=>x.name===itemName);
+    const p  = it?.prices[qModel];
+    if (p) setNewItem(f=>({...f, name:itemName, price:String(p)}));
+    else   setNewItem(f=>({...f, name:itemName}));
+  }
+  function handleQModelSelect(model) {
+    setQModel(model);
+    if (!qItem||!qSeriesObj) return;
+    const it = qSeriesObj.items.find(x=>x.name===qItem);
+    const p  = it?.prices[model];
+    if (p) setNewItem(f=>({...f, price:String(p)}));
+  }
+
+  // ── 共用下拉樣式 ─────────────────────────────────────────────────────────────
+  const selStyle = {background:"rgba(0,20,60,0.7)",border:`1px solid ${C.border}`,borderRadius:8,
+    color:C.text,fontSize:12,padding:"6px 8px",outline:"none",cursor:"pointer",flex:1,minWidth:0};
 
   return (
     <div>
+      {/* ── 內部報價試算 ──────────────────────────────────────────────────────── */}
       <Card hi style={{marginBottom:12}}>
         <H>💰 內部報價試算</H>
+
+        {/* 快帶下拉：系列 → 型號 → 項目 */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}>
+          <div>
+            <div style={{color:C.textDim,fontSize:11,fontWeight:600,marginBottom:4}}>快帶：系列</div>
+            <select value={qSeries} onChange={e=>{setQSeries(e.target.value);setQModel("");setQItem("");}} style={selStyle}>
+              <option value="">-- 選系列 --</option>
+              {seriesData.map(s=><option key={s.seriesName} value={s.seriesName}>{s.seriesName}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{color:C.textDim,fontSize:11,fontWeight:600,marginBottom:4}}>型號</div>
+            <select value={qModel} onChange={e=>handleQModelSelect(e.target.value)} style={selStyle} disabled={!qSeriesObj}>
+              <option value="">-- 選型號 --</option>
+              {(qSeriesObj?.models||[]).map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{color:C.textDim,fontSize:11,fontWeight:600,marginBottom:4}}>維修項目</div>
+            <select value={qItem} onChange={e=>handleQItemSelect(e.target.value)} style={selStyle} disabled={!qSeriesObj}>
+              <option value="">-- 選項目 --</option>
+              {(qSeriesObj?.items||[]).map(it=><option key={it.name} value={it.name}>{it.name}</option>)}
+            </select>
+          </div>
+        </div>
+        {qAutoPrice&&<div style={{color:C.green,fontSize:11,marginBottom:6}}>✓ 已帶入報價 NT${qAutoPrice.toLocaleString()}</div>}
+
+        {/* 原本手動輸入列 */}
         <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:8,marginBottom:8}}>
           <Input label="項目名稱" value={newItem.name} onChange={e=>setNewItem(f=>({...f,name:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&addItem()}/>
           <Input label="收費 NT$" type="number" value={newItem.price} onChange={e=>setNewItem(f=>({...f,price:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&addItem()}/>
@@ -3391,6 +3729,186 @@ function QuotePage({catalog, stock}) {
           </div>
         )}
         {items.length===0&&<div style={{color:C.textDim,textAlign:"center",padding:16,fontSize:13}}>新增項目開始試算</div>}
+      </Card>
+
+      {/* ── 系列報價表 ────────────────────────────────────────────────────────── */}
+      <Card style={{marginBottom:12}}>
+        {/* 標題列 */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <H style={{marginBottom:0}}>📋 系列報價表</H>
+          <div style={{display:"flex",gap:6}}>
+            {!editMode && <Btn sm v="ghost" onClick={handleEnterEdit}>✏️ 編輯報價</Btn>}
+            {editMode  && <Btn sm onClick={handleSaveSeries}>💾 儲存</Btn>}
+            {editMode  && <Btn sm v="ghost" onClick={handleCancelEdit}>✕ 取消</Btn>}
+          </div>
+        </div>
+
+        {/* 系列切換按鈕 */}
+        {moveSel?.type==="series"&&(
+          <div style={{color:C.accent,fontSize:12,marginBottom:6,fontWeight:600}}>
+            已選「{draftData[moveSel.idx].seriesName}」→ 點藍線插入到該位置
+            <button onClick={()=>setMoveSel(null)} style={{marginLeft:10,background:"none",border:"none",color:C.textDim,cursor:"pointer",fontSize:11}}>✕ 取消</button>
+          </div>
+        )}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+          {(editMode?draftData:seriesData).map((s,i)=>{
+            const isSel = moveSel?.type==="series" && moveSel.idx===i;
+            return (
+              <React.Fragment key={i}>
+                {/* 插入線：出現在每個系列前（包含最前面） */}
+                {editMode && moveSel?.type==="series" && moveSel.idx!==i && moveSel.idx!==i-1 && (
+                  <InsertLine onClick={()=>insertAt("series", moveSel.idx, i)} vertical/>
+                )}
+                <span style={{display:"inline-flex",alignItems:"center",gap:2,
+                  outline: isSel ? `2px solid ${C.accent}` : "none",
+                  borderRadius:10, padding: isSel ? "1px" : 0,
+                }}>
+                  <button onClick={()=>{ if(moveSel?.type==="series") return; setSelSeries(i); }} style={{
+                    padding:"5px 11px",borderRadius:8,fontSize:12,fontWeight:selSeries===i?700:400,cursor:"pointer",
+                    border:`1px solid ${isSel?C.accent:selSeries===i?C.accent:C.border}`,
+                    background:isSel?"rgba(0,100,255,0.35)":selSeries===i?"rgba(0,100,255,0.2)":"transparent",
+                    color:selSeries===i?C.accent:C.textMid,transition:"all .15s",
+                  }}>{s.seriesName}</button>
+                  {editMode&&<button onClick={()=>setMoveSel(moveSel?.type==="series"&&moveSel.idx===i ? null : {type:"series",idx:i})}
+                    style={{background:"none",border:"none",color:isSel?C.accent:C.textDim,cursor:"pointer",fontSize:13,padding:"0 3px",lineHeight:1}}>☰</button>}
+                </span>
+              </React.Fragment>
+            );
+          })}
+          {/* 插入線：最後面 */}
+          {editMode && moveSel?.type==="series" && moveSel.idx !== (draftData.length-1) && (
+            <InsertLine onClick={()=>insertAt("series", moveSel.idx, draftData.length)} vertical/>
+          )}
+        </div>
+
+        {/* 編輯模式：系列管理按鈕 */}
+        {editMode && (
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10,paddingBottom:10,borderBottom:`1px solid ${C.border}`}}>
+            <Btn sm v="ghost" onClick={handleAddSeries}>＋ 新增系列</Btn>
+            <Btn sm v="ghost" onClick={handleRenameSeries}>✏️ 重新命名系列</Btn>
+            <Btn sm v="danger" onClick={handleDeleteSeries}>🗑️ 刪除系列</Btn>
+          </div>
+        )}
+
+        {/* 系列標題 */}
+        <div style={{color:C.accent,fontWeight:700,fontSize:13,marginBottom:8}}>
+          {(editMode?draftData:seriesData)[selSeries]?.seriesName}
+        </div>
+
+        {/* 瀏覽模式 */}
+        {!editMode && <SeriesPriceTable series={seriesData[selSeries]}/>}
+
+        {/* 編輯模式 */}
+        {editMode && (()=>{
+          const s = draftData[selSeries];
+          if (!s) return null;
+          return (
+            <div>
+              {/* 型號管理 */}
+              {moveSel?.type==="model"&&(
+                <div style={{color:C.accent,fontSize:11,marginBottom:4,fontWeight:600}}>
+                  已選「{s.models[moveSel.idx]}」→ 點藍線插入到該位置
+                  <button onClick={()=>setMoveSel(null)} style={{marginLeft:8,background:"none",border:"none",color:C.textDim,cursor:"pointer",fontSize:11}}>✕ 取消</button>
+                </div>
+              )}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
+                <Btn sm v="ghost" onClick={handleAddModel}>＋ 新增型號</Btn>
+                {s.models.map((m,mi)=>{
+                  const isSel = moveSel?.type==="model" && moveSel.idx===mi;
+                  return (
+                    <React.Fragment key={mi}>
+                      {moveSel?.type==="model" && moveSel.idx!==mi && moveSel.idx!==mi-1 && (
+                        <InsertLine onClick={()=>insertAt("model", moveSel.idx, mi)} vertical/>
+                      )}
+                      <span style={{display:"inline-flex",alignItems:"center",gap:3,
+                        background:isSel?"rgba(0,100,255,0.25)":"rgba(0,40,100,0.3)",
+                        border:`1px solid ${isSel?C.accent:C.border}`,
+                        borderRadius:6,padding:"3px 8px",fontSize:11,
+                        outline: isSel?`2px solid ${C.accent}`:"none",
+                      }}>
+                        <span style={{color:C.text}}>{m}</span>
+                        <button onClick={()=>setMoveSel(moveSel?.type==="model"&&moveSel.idx===mi ? null : {type:"model",idx:mi})}
+                          style={{background:"none",border:"none",color:isSel?C.accent:C.textDim,cursor:"pointer",fontSize:11,padding:"0 2px"}}>☰</button>
+                        <button onClick={()=>handleRenameModel(mi)} style={{background:"none",border:"none",color:C.textDim,cursor:"pointer",fontSize:11,padding:"0 2px"}}>✏️</button>
+                        <button onClick={()=>handleDeleteModel(mi)} style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:11,padding:"0 2px"}}>✕</button>
+                      </span>
+                    </React.Fragment>
+                  );
+                })}
+                {moveSel?.type==="model" && moveSel.idx !== s.models.length-1 && (
+                  <InsertLine onClick={()=>insertAt("model", moveSel.idx, s.models.length)} vertical/>
+                )}
+              </div>
+              {/* 價格表格 */}
+              <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:s.models.length*120+200}}>
+                  <thead>
+                    <tr>
+                      <th style={{textAlign:"left",padding:"7px 10px",background:"rgba(0,40,100,0.5)",color:C.accent,fontWeight:700,fontSize:12,borderBottom:`1px solid ${C.borderHi}`,whiteSpace:"nowrap",minWidth:150,position:"sticky",left:0,zIndex:1}}>維修項目</th>
+                      {s.models.map((m,mi)=>(
+                        <th key={mi} style={{padding:"7px 10px",background:"rgba(0,40,100,0.5)",color:C.text,fontWeight:700,fontSize:12,borderBottom:`1px solid ${C.borderHi}`,whiteSpace:"nowrap",textAlign:"center",minWidth:110}}>{m}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {moveSel?.type==="item" && moveSel.idx !== 0 && (
+                      <tr><td colSpan={s.models.length+1} style={{padding:"2px 6px"}}>
+                        <InsertLine onClick={()=>insertAt("item", moveSel.idx, 0)}/>
+                      </td></tr>
+                    )}
+                    {s.items.map((item,ii)=>{
+                      const isSel = moveSel?.type==="item" && moveSel.idx===ii;
+                      return (
+                        <React.Fragment key={ii}>
+                          <tr style={{
+                            background:ii%2===0?"rgba(0,20,60,0.3)":"transparent",
+                            outline: isSel?`2px solid ${C.accent}`:"none",
+                          }}>
+                            <td style={{padding:"4px 6px",borderBottom:`1px solid ${C.border}`,position:"sticky",left:0,background:isSel?"rgba(0,60,180,0.35)":ii%2===0?"rgba(0,20,60,0.8)":"rgba(0,10,40,0.8)",zIndex:1}}>
+                              <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
+                                <span style={{color:isSel?C.accent:C.textMid,fontSize:11,whiteSpace:"nowrap",fontWeight:isSel?700:400}}>{item.name}</span>
+                                <button onClick={()=>setMoveSel(moveSel?.type==="item"&&moveSel.idx===ii ? null : {type:"item",idx:ii})}
+                                  style={{background:"none",border:"none",color:isSel?C.accent:C.textDim,cursor:"pointer",fontSize:10,padding:"0 2px"}}>☰</button>
+                                <button onClick={()=>handleRenameItem(ii)} style={{background:"none",border:"none",color:C.textDim,cursor:"pointer",fontSize:10,padding:"0 2px"}}>✏️</button>
+                                <button onClick={()=>handleDeleteItem(ii)} style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:10,padding:"0 2px"}}>✕</button>
+                              </span>
+                            </td>
+                            {s.models.map((m,mi)=>(
+                              <td key={mi} style={{padding:"4px 6px",borderBottom:`1px solid ${C.border}`,textAlign:"center"}}>
+                                <input
+                                  type="number" inputMode="numeric"
+                                  defaultValue={item.prices[m]||""}
+                                  placeholder="-"
+                                  onChange={e=>handleDraftPrice(selSeries,ii,m,e.target.value)}
+                                  style={{width:90,background:"rgba(0,30,80,0.7)",border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:12,padding:"4px 6px",textAlign:"center",outline:"none"}}
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                          {moveSel?.type==="item" && moveSel.idx!==ii && moveSel.idx!==ii+1 && (
+                            <tr><td colSpan={s.models.length+1} style={{padding:"2px 6px"}}>
+                              <InsertLine onClick={()=>insertAt("item", moveSel.idx, ii+1)}/>
+                            </td></tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                    {/* 新增項目列 */}
+                    <tr>
+                      <td colSpan={s.models.length+1} style={{padding:"6px 10px",borderBottom:`1px solid ${C.border}`}}>
+                        <Btn sm v="ghost" onClick={handleAddItem}>＋ 新增維修項目</Btn>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
+
+        <div style={{color:C.textDim,fontSize:11,marginTop:8}}>
+          {editMode?"＊ 空白格子代表「-」。儲存後生效，重新整理仍保留。":"＊ 報價僅供參考，實際以現場評估為準。"}
+        </div>
       </Card>
     </div>
   );
