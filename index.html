@@ -2560,6 +2560,34 @@ function ReportsPage({orders,purchases,expenses}) {
   const totalRev=dailyPL.reduce((a,d)=>a+d.rev,0);
   const totalProfit=dailyPL.reduce((a,d)=>a+d.profit,0)-setupCostsTotal;
 
+  // ── 賺錢分析：依工單 items 統計 ──────────────────────────────────────────────
+  const itemStats = useMemo(()=>{
+    const map={};  // name → { profit, revenue, count }
+    orders.forEach(o=>{
+      const its = o.items||[];
+      if(!its.length) return;
+      // 工單利潤按項目成本比例分攤（item.cost*qty / totalCost）
+      const tCost = its.reduce((a,i)=>(a+(Number(i.cost)||0)*(Number(i.qty)||1)),0);
+      const orderProfit = Number(o.profit) || (Number(o.totalRevenue||0)-Number(o.totalCost||0));
+      its.forEach(i=>{
+        const n = (i.name||"").trim(); if(!n) return;
+        const q = Number(i.qty)||1;
+        const ic = (Number(i.cost)||0)*q;
+        const share = tCost>0 ? ic/tCost : 1/its.length;
+        if(!map[n]) map[n]={profit:0,revenue:0,count:0};
+        map[n].profit  += orderProfit * share;
+        map[n].revenue += Number(o.totalRevenue||0) * share;
+        map[n].count   += q;
+      });
+    });
+    const arr = Object.entries(map).map(([name,v])=>({name,...v,margin:v.revenue>0?(v.profit/v.revenue)*100:0}));
+    return {
+      byProfit: [...arr].sort((a,b)=>b.profit-a.profit).slice(0,5),
+      byMargin: [...arr].filter(x=>x.revenue>0).sort((a,b)=>b.margin-a.margin).slice(0,5),
+      byCount:  [...arr].sort((a,b)=>b.count-a.count).slice(0,5),
+    };
+  },[orders]);
+
   return (
     <div>
       <div style={{display:"flex",gap:6,marginBottom:15,flexWrap:"wrap"}}>
@@ -2567,6 +2595,7 @@ function ReportsPage({orders,purchases,expenses}) {
         {tb("compare","⚖️ 年度比較")}
         {tb("monthly","🔍 月份跨年")}
         {tb("daily","📈 累計盈虧")}
+        {tb("analysis","📊 賺錢分析")}
       </div>
 
       {tab==="annual"&&(<div>
@@ -2648,6 +2677,58 @@ function ReportsPage({orders,purchases,expenses}) {
                   {d.cumulative>=0?"+":""}{fmt(d.cumulative)}
                 </div>
               </div>
+            </div>
+          ))}
+        </Card>
+      </div>)}
+
+      {tab==="analysis"&&(<div>
+        <Card hi style={{marginBottom:12}}>
+          <H>📊 賺錢分析</H>
+          <div style={{color:C.textDim,fontSize:12}}>依所有工單項目統計，利潤依成本比例分攤。</div>
+        </Card>
+
+        {/* 最賺項目 */}
+        <Card style={{marginBottom:12}}>
+          <H>🔥 最賺項目 Top 5</H>
+          {itemStats.byProfit.length===0&&<div style={{color:C.textDim,fontSize:12,textAlign:"center",padding:12}}>尚無工單資料</div>}
+          {itemStats.byProfit.map((x,i)=>(
+            <div key={x.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:i<itemStats.byProfit.length-1?`1px solid ${C.border}`:"none"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{color:i===0?C.gold:C.textDim,fontWeight:700,fontSize:13,minWidth:20}}>#{i+1}</span>
+                <span style={{color:C.text,fontSize:13}}>{x.name}</span>
+              </div>
+              <span style={{color:x.profit>=0?C.green:C.red,fontWeight:700,fontSize:13}}>{x.profit>=0?"+":""}{fmt(Math.round(x.profit))}</span>
+            </div>
+          ))}
+        </Card>
+
+        {/* 利潤率最高 */}
+        <Card style={{marginBottom:12}}>
+          <H>📈 利潤率最高 Top 5</H>
+          {itemStats.byMargin.length===0&&<div style={{color:C.textDim,fontSize:12,textAlign:"center",padding:12}}>尚無工單資料</div>}
+          {itemStats.byMargin.map((x,i)=>(
+            <div key={x.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:i<itemStats.byMargin.length-1?`1px solid ${C.border}`:"none"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{color:i===0?C.gold:C.textDim,fontWeight:700,fontSize:13,minWidth:20}}>#{i+1}</span>
+                <span style={{color:C.text,fontSize:13}}>{x.name}</span>
+              </div>
+              <span style={{color:x.margin>=50?C.green:x.margin>=20?C.gold:C.red,fontWeight:700,fontSize:13}}>{x.margin.toFixed(1)}%</span>
+            </div>
+          ))}
+        </Card>
+
+        {/* 熱門項目 */}
+        <Card>
+          <H>📦 熱門項目 Top 5</H>
+          {itemStats.byCount.length===0&&<div style={{color:C.textDim,fontSize:12,textAlign:"center",padding:12}}>尚無工單資料</div>}
+          {itemStats.byCount.map((x,i)=>(
+            <div key={x.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:i<itemStats.byCount.length-1?`1px solid ${C.border}`:"none"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{color:i===0?C.gold:C.textDim,fontWeight:700,fontSize:13,minWidth:20}}>#{i+1}</span>
+                <span style={{color:C.text,fontSize:13}}>{x.name}</span>
+              </div>
+              <span style={{color:C.accent,fontWeight:700,fontSize:13}}>{x.count} 次</span>
             </div>
           ))}
         </Card>
