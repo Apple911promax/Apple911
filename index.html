@@ -2385,7 +2385,8 @@ function ExpensesPage({orders,purchases,expenses,setExpenses,catalog}) {
   const oCost =orders.filter(o=>o.date?.slice(0,7)===mk).reduce((a,o)=>a+o.totalCost,0);
   const totPur=purchases.filter(p=>p.date?.slice(0,7)===mk).reduce((a,p)=>a+p.amount,0);
   const manE  =(me.items||[]).reduce((a,i)=>a+i.amount,0);
-  const totE  =oCost+totPur+manE;
+  // 月實賺淨利 = 營業額 - 進貨成本 - 固定支出（工單零件成本不列入，已含在進貨）
+  const totE  =totPur+manE;
   const profit=mRev-totE;
   const pR=mRev>0?(totPur/mRev)*100:0;
   const cR=mRev>0?(oCost/mRev)*100:0;
@@ -2412,12 +2413,18 @@ function ExpensesPage({orders,purchases,expenses,setExpenses,catalog}) {
       </Card>
 
       <Card>
-        <H>支出總覽</H>
-        {[{l:"工單零件成本（自動）",a:oCost,c:C.orange},{l:"進貨成本（自動）",a:totPur,c:"#ff9944"}].map(r=>(
-          <div key={r.l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
-            <span style={{color:C.textMid,fontSize:13}}>{r.l}</span><span style={{color:r.c,fontWeight:700}}>{fmt(r.a)}</span>
-          </div>
-        ))}
+        <H>收支總覽</H>
+        {/* 本月營業額 */}
+        <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+          <span style={{color:C.textMid,fontSize:13}}>💰 本月營業額</span>
+          <span style={{color:C.green,fontWeight:700}}>{fmt(mRev)}</span>
+        </div>
+        {/* 進貨成本（自動） */}
+        <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+          <span style={{color:C.textMid,fontSize:13}}>📦 進貨成本（自動）</span>
+          <span style={{color:"#ff9944",fontWeight:700}}>{fmt(totPur)}</span>
+        </div>
+        {/* 固定支出各項（可刪除） */}
         {(me.items||[]).map(item=>(
           <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
             <span style={{color:C.textMid,fontSize:13}}>{item.label}</span>
@@ -2427,9 +2434,18 @@ function ExpensesPage({orders,purchases,expenses,setExpenses,catalog}) {
             </div>
           </div>
         ))}
+        {/* 已用料成本（僅供參考，不計入淨利） */}
+        {oCost>0&&(
+          <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+            <span style={{color:C.textDim,fontSize:12}}>⚙️ 已用料成本（僅供參考）</span>
+            <span style={{color:C.textDim,fontWeight:600}}>{fmt(oCost)}</span>
+          </div>
+        )}
+        {/* 總支出小計 */}
         <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:`1px solid ${C.borderHi}`,marginTop:4}}>
-          <span style={{color:C.red,fontWeight:800}}>總支出</span><span style={{color:C.red,fontWeight:800,fontSize:16}}>{fmt(totE)}</span>
+          <span style={{color:C.red,fontWeight:800}}>總支出（進貨＋固定）</span><span style={{color:C.red,fontWeight:800,fontSize:16}}>{fmt(totE)}</span>
         </div>
+        {/* 月實賺淨利 */}
         <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0"}}>
           <span style={{color:profit>=0?C.green:C.red,fontWeight:800,fontSize:15}}>{profit>=0?"💚 本月盈餘":"🔴 本月虧損"}</span>
           <span style={{color:profit>=0?C.green:C.red,fontWeight:800,fontSize:18}}>{profit>=0?"+":""}{fmt(profit)}</span>
@@ -2483,8 +2499,8 @@ function ExpensesPage({orders,purchases,expenses,setExpenses,catalog}) {
         <div style={{marginTop:12,padding:"10px 14px",background:"rgba(0,30,100,0.25)",borderRadius:10,border:`1px solid ${C.border}`}}>
           <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>📋 當月摘要</div>
           <div style={{color:C.textMid,fontSize:12,lineHeight:1.9}}>
-            {y}年{MZ[m-1]} 營業額 <b style={{color:C.accent}}>{fmt(mRev)}</b>，總支出 <b style={{color:C.red}}>{fmt(totE)}</b>。<br/>
-            進貨佔比 <b style={{color:badge(pR).c}}>{pR.toFixed(1)}%（{badge(pR).t}）</b>，工單成本佔比 <b style={{color:badge(cR).c}}>{cR.toFixed(1)}%（{badge(cR).t}）</b>。<br/>
+            {y}年{MZ[m-1]} 營業額 <b style={{color:C.accent}}>{fmt(mRev)}</b>，總支出（進貨＋固定）<b style={{color:C.red}}>{fmt(totE)}</b>。<br/>
+            進貨佔比 <b style={{color:badge(pR).c}}>{pR.toFixed(1)}%（{badge(pR).t}）</b>。<br/>
             本月 <b style={{color:profit>=0?C.green:C.red}}>{profit>=0?"盈餘":"虧損"} {profit>=0?"+":""}{fmt(profit)}</b>。
           </div>
         </div>
@@ -2497,7 +2513,7 @@ function ExpensesPage({orders,purchases,expenses,setExpenses,catalog}) {
 function ReportsPage({orders,purchases,expenses}) {
   const [tab,setTab]=useState("annual"); const [y1,setY1]=useState(nowYM().y); const [y2,setY2]=useState(nowYM().y-1); const [cm,setCm]=useState(nowYM().m);
   const years=Array.from({length:nowYM().y-2025+2},(_,i)=>nowYM().y+1-i).filter(y=>y>=2025);
-  function getMD(y,m){const mk=mkey(y,m);const rev=orders.filter(o=>o.date?.slice(0,7)===mk).reduce((a,o)=>a+o.totalRevenue,0);const cost=orders.filter(o=>o.date?.slice(0,7)===mk).reduce((a,o)=>a+o.totalCost,0);const totP=purchases.filter(p=>p.date?.slice(0,7)===mk).reduce((a,p)=>a+p.amount,0);const fx=((expenses[mk]||{}).items||[]).reduce((a,i)=>a+i.amount,0);const exp=cost+totP+fx;return{rev,exp,profit:rev-exp};}
+  function getMD(y,m){const mk=mkey(y,m);const rev=orders.filter(o=>o.date?.slice(0,7)===mk).reduce((a,o)=>a+o.totalRevenue,0);const totP=purchases.filter(p=>p.date?.slice(0,7)===mk).reduce((a,p)=>a+p.amount,0);const fx=((expenses[mk]||{}).items||[]).reduce((a,i)=>a+i.amount,0);const exp=totP+fx;return{rev,exp,profit:rev-exp};}
   const d1=useMemo(()=>MZ.map((_,i)=>getMD(y1,i+1)),[y1,orders,purchases,expenses]);
   const d2=useMemo(()=>MZ.map((_,i)=>getMD(y2,i+1)),[y2,orders,purchases,expenses]);
   const r1=d1.reduce((a,d)=>a+d.rev,0); const r2=d2.reduce((a,d)=>a+d.rev,0); const p1=d1.reduce((a,d)=>a+d.profit,0);
@@ -2512,13 +2528,23 @@ function ReportsPage({orders,purchases,expenses}) {
       const d=o.date.slice(0,10);
       if(!dayMap[d])dayMap[d]={rev:0,cost:0};
       dayMap[d].rev+=o.totalRevenue||0;
-      dayMap[d].cost+=o.totalCost||0;
+      // 工單零件成本不列入（避免與進貨重複）
     });
     purchases.forEach(p=>{
       if(!p.date)return;
       const d=p.date.slice(0,10);
       if(!dayMap[d])dayMap[d]={rev:0,cost:0};
       dayMap[d].cost+=p.amount||0;
+    });
+    // 固定支出：依月份分配到月份第一天
+    Object.keys(expenses).forEach(mk=>{
+      if(mk==="__setup")return;
+      const items=(expenses[mk]||{}).items||[];
+      const fx=items.reduce((a,i)=>a+i.amount,0);
+      if(fx===0)return;
+      const d=mk+"-01";
+      if(!dayMap[d])dayMap[d]={rev:0,cost:0};
+      dayMap[d].cost+=fx;
     });
     const days=Object.keys(dayMap).sort();
     let cumulative=0;
@@ -2527,10 +2553,12 @@ function ReportsPage({orders,purchases,expenses}) {
       cumulative+=profit;
       return{date:d,rev:dayMap[d].rev,cost:dayMap[d].cost,profit,cumulative};
     }).reverse(); // 最新的在前
-  },[orders,purchases]);
+  },[orders,purchases,expenses]);
 
+  // 一次性開辦費用只扣一次
+  const setupCostsTotal=(expenses.__setup||[]).reduce((a,i)=>a+i.amount,0);
   const totalRev=dailyPL.reduce((a,d)=>a+d.rev,0);
-  const totalProfit=dailyPL.reduce((a,d)=>a+d.profit,0);
+  const totalProfit=dailyPL.reduce((a,d)=>a+d.profit,0)-setupCostsTotal;
 
   return (
     <div>
@@ -2580,6 +2608,7 @@ function ReportsPage({orders,purchases,expenses}) {
             <div style={{color:totalProfit>=0?C.green:C.red,fontSize:24,fontWeight:900}}>
               {totalProfit>=0?"盈利 ":"虧損 "}{fmt(Math.abs(totalProfit))}
             </div>
+            {setupCostsTotal>0&&<div style={{color:C.textDim,fontSize:11,marginTop:6}}>（已扣除一次性開辦費用 {fmt(setupCostsTotal)}）</div>}
           </div>
         </Card>
 
@@ -4007,7 +4036,7 @@ function LookupPage() {
 // ─── USED PHONES PAGE (二手機管理) ────────────────────────────────────────────
 function UsedPhonesPage() {
   const [phones, setPhones] = useState(() => loadUsedPhones());
-  const [form, setForm] = useState({ model:"", purchasePrice:"", source:"", note:"" });
+  const [form, setForm] = useState({ model:"", purchasePrice:"", source:"", note:"", purchaseDate:today() });
 
   // 重新從 localStorage 讀取，保持畫面同步
   function refresh() { setPhones(loadUsedPhones()); }
@@ -4021,8 +4050,9 @@ function UsedPhonesPage() {
       purchasePrice: Number(form.purchasePrice),
       source:        form.source.trim(),
       note:          form.note.trim(),
+      purchaseDate:  form.purchaseDate || today(),
     });
-    setForm({ model:"", purchasePrice:"", source:"", note:"" });
+    setForm({ model:"", purchasePrice:"", source:"", note:"", purchaseDate:today() });
     refresh();
   }
 
@@ -4045,11 +4075,23 @@ function UsedPhonesPage() {
     refresh();
   }
 
-  // ── 標記已售出（prompt 簡化版）──────────────────────────────────────────────
+  // ── 標記已售出（inline form） ────────────────────────────────────────────────
+  const [sellFormId, setSellFormId] = useState(null);
+  const [sellForm,   setSellForm]   = useState({salePrice:"", saleDate:today(), buyerNote:""});
+
   function handleSell(id) {
-    const price = prompt("售出價格（NT$）：");
-    if (!price || isNaN(Number(price))) { alert("請輸入有效售價"); return; }
-    markUsedPhoneSold(id, { salePrice: Number(price) });
+    if (sellFormId === id) { setSellFormId(null); return; }
+    setSellFormId(id);
+    setSellForm({salePrice:"", saleDate:today(), buyerNote:""});
+  }
+  function handleSellSubmit(id) {
+    if (!sellForm.salePrice || isNaN(Number(sellForm.salePrice))) return;
+    markUsedPhoneSold(id, {
+      salePrice:  Number(sellForm.salePrice),
+      saleDate:   sellForm.saleDate || today(),
+      buyerNote:  sellForm.buyerNote.trim(),
+    });
+    setSellFormId(null);
     refresh();
   }
 
@@ -4067,38 +4109,48 @@ function UsedPhonesPage() {
     refresh();
   }
 
-  // ── 編輯基本資料（prompt 依序詢問） ─────────────────────────────────────────
+  // ── 編輯基本資料（inline form） ──────────────────────────────────────────────
+  const [editFormId, setEditFormId] = useState(null);
+  const [editForm,   setEditForm]   = useState({model:"",purchasePrice:"",source:"",note:"",salePrice:"",saleDate:""});
+
   function handleEdit(phone) {
-    const model = prompt("型號：", phone.model);
-    if (model === null) return;                                   // 按取消 → 中止
-    const priceRaw = prompt("收購價格（NT$）：", String(phone.purchasePrice));
-    if (priceRaw === null) return;
-    if (priceRaw.trim() !== "" && isNaN(Number(priceRaw))) { alert("請輸入有效數字"); return; }
-    const source = prompt("收購來源：", phone.source || "");
-    if (source === null) return;
-    const note = prompt("備註：", phone.note || "");
-    if (note === null) return;
-
-    updateUsedPhone(phone.id, {
-      model:         model.trim()         || phone.model,           // 空白保留原值
-      purchasePrice: priceRaw.trim() !== "" ? Number(priceRaw) : phone.purchasePrice,
-      source:        source.trim()        || phone.source || "",
-      note:          note.trim()          || phone.note   || "",
+    if (editFormId === phone.id) { setEditFormId(null); return; }  // 再點收起
+    setEditFormId(phone.id);
+    setEditForm({
+      model:         phone.model         || "",
+      purchasePrice: String(phone.purchasePrice ?? ""),
+      source:        phone.source        || "",
+      note:          phone.note          || "",
+      purchaseDate:  phone.purchaseDate  || "",
+      salePrice:     phone.saleInfo ? String(phone.saleInfo.salePrice ?? "") : "",
+      saleDate:      phone.saleInfo ? (phone.saleInfo.saleDate || "") : "",
     });
+  }
 
-    // 已售出時，額外讓使用者修改售價（直接更新 saleInfo，不動其他售出資料）
+  function handleEditSubmit(phone) {
+    const price = editForm.purchasePrice.trim();
+    updateUsedPhone(phone.id, {
+      model:         editForm.model.trim()  || phone.model,
+      purchasePrice: price !== "" ? Number(price) : phone.purchasePrice,
+      source:        editForm.source.trim(),
+      note:          editForm.note.trim(),
+      purchaseDate:  editForm.purchaseDate  || phone.purchaseDate || "",
+    });
+    // 已售出：另外更新 saleInfo（不動 repairCosts / status）
     if (phone.status === "已售出" && phone.saleInfo) {
-      const spRaw = prompt("售出價格（NT$）：", String(phone.saleInfo.salePrice));
-      if (spRaw !== null && spRaw.trim() !== "" && !isNaN(Number(spRaw))) {
-        const list = loadUsedPhones();
-        const idx  = list.findIndex(p => p.id === phone.id);
-        if (idx !== -1) {
-          list[idx].saleInfo = { ...list[idx].saleInfo, salePrice: Number(spRaw) };
-          saveUsedPhones(list);
-        }
+      const sp   = editForm.salePrice.trim();
+      const list = loadUsedPhones();
+      const idx  = list.findIndex(p => p.id === phone.id);
+      if (idx !== -1) {
+        list[idx].saleInfo = {
+          ...list[idx].saleInfo,
+          ...(sp !== "" && !isNaN(Number(sp)) ? { salePrice: Number(sp) } : {}),
+          ...(editForm.saleDate ? { saleDate: editForm.saleDate } : {}),
+        };
+        saveUsedPhones(list);
       }
     }
-
+    setEditFormId(null);
     refresh();
   }
 
@@ -4124,6 +4176,7 @@ function UsedPhonesPage() {
           <Input label="型號 *"          value={form.model}         onChange={e=>setForm(f=>({...f,model:e.target.value}))}        placeholder="例：iPhone 13 Pro"/>
           <Input label="收購價格 NT$ *"  type="number" inputMode="numeric" value={form.purchasePrice} onChange={e=>setForm(f=>({...f,purchasePrice:e.target.value}))} placeholder="0"/>
           <Input label="收購來源"        value={form.source}        onChange={e=>setForm(f=>({...f,source:e.target.value}))}       placeholder="例：FB / 朋友"/>
+          <Input label="收購日期"        type="date" value={form.purchaseDate} onChange={e=>setForm(f=>({...f,purchaseDate:e.target.value}))}/>
           <Input label="備註"            value={form.note}          onChange={e=>setForm(f=>({...f,note:e.target.value}))}         placeholder="外觀、問題…"/>
         </div>
         <Btn onClick={handleAdd} style={{marginTop:4}}>新增</Btn>
@@ -4170,6 +4223,12 @@ function UsedPhonesPage() {
             </div>
 
             {/* 補充資訊 */}
+            <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>
+              📅 收購：{phone.purchaseDate || "未記錄日期"}
+              {phone.status==="已售出" && phone.saleInfo?.saleDate && (
+                <span style={{marginLeft:12}}>✅ 售出：{phone.saleInfo.saleDate}</span>
+              )}
+            </div>
             {phone.source && <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>📍 來源：{phone.source}</div>}
             {phone.note   && <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>📝 {phone.note}</div>}
 
@@ -4187,13 +4246,21 @@ function UsedPhonesPage() {
 
             {/* 操作按鈕 */}
             <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
-              <Btn v="ghost" sm onClick={e=>{e.stopPropagation();handleEdit(phone);}}>✏️ 編輯</Btn>
+              <Btn v="ghost" sm onClick={e=>{e.stopPropagation();handleEdit(phone);}}
+                style={editFormId===phone.id?{border:`1px solid ${C.accent}`,color:C.accent}:{}}>
+                {editFormId===phone.id?"✕ 取消編輯":"✏️ 編輯"}
+              </Btn>
               <Btn v="ghost" sm onClick={e=>{e.stopPropagation();handleAddCost(phone.id);}}
                 style={costFormId===phone.id?{border:`1px solid ${C.accent}`,color:C.accent}:{}}>
                 {costFormId===phone.id?"✕ 取消成本":"＋成本"}
               </Btn>
               {phone.status !== "已售出" && (
-                <Btn sm onClick={e=>{e.stopPropagation();handleSell(phone.id);}} style={{background:"rgba(0,200,120,0.18)",border:`1px solid ${C.green}`,color:C.green}}>設為已售出</Btn>
+                <Btn sm onClick={e=>{e.stopPropagation();handleSell(phone.id);}}
+                  style={sellFormId===phone.id
+                    ?{background:"rgba(0,200,120,0.35)",border:`1px solid ${C.green}`,color:C.green}
+                    :{background:"rgba(0,200,120,0.18)",border:`1px solid ${C.green}`,color:C.green}}>
+                  {sellFormId===phone.id?"✕ 取消售出":"設為已售出"}
+                </Btn>
               )}
               {phone.status !== "備用機" && phone.status !== "已售出" && (
                 <Btn v="ghost" sm onClick={e=>{e.stopPropagation();handleSpare(phone.id);}}>設為備用機</Btn>
@@ -4202,6 +4269,79 @@ function UsedPhonesPage() {
                 <Btn v="ghost" sm onClick={e=>{e.stopPropagation();updateUsedPhone(phone.id,{status:"庫存中"});refresh();}}>設回庫存</Btn>
               )}
             </div>
+
+            {/* 售出 inline form */}
+            {sellFormId===phone.id && (
+              <div onClick={e=>e.stopPropagation()} style={{
+                marginTop:10,padding:"12px 14px",borderRadius:10,
+                background:"rgba(0,60,30,0.4)",border:`1px solid ${C.green}`,
+              }}>
+                <div style={{color:C.green,fontWeight:700,fontSize:12,marginBottom:8}}>✅ 填寫售出資料</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                  <Input label="售出價格 NT$ *" type="number" inputMode="numeric"
+                    value={sellForm.salePrice}
+                    onChange={e=>setSellForm(f=>({...f,salePrice:e.target.value}))}
+                    style={{marginBottom:0}} placeholder="0"/>
+                  <Input label="售出日期" type="date"
+                    value={sellForm.saleDate}
+                    onChange={e=>setSellForm(f=>({...f,saleDate:e.target.value}))}
+                    style={{marginBottom:0}}/>
+                  <Input label="買家備註（可空白）" value={sellForm.buyerNote}
+                    onChange={e=>setSellForm(f=>({...f,buyerNote:e.target.value}))}
+                    style={{marginBottom:0}} placeholder="例：LINE 買家 / 現金"/>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <Btn sm onClick={e=>{e.stopPropagation();handleSellSubmit(phone.id);}}
+                    style={{background:"rgba(0,200,120,0.25)",border:`1px solid ${C.green}`,color:C.green}}>
+                    ✓ 確認售出
+                  </Btn>
+                  <Btn sm v="ghost" onClick={e=>{e.stopPropagation();setSellFormId(null);}}>取消</Btn>
+                </div>
+              </div>
+            )}
+
+            {/* 編輯 inline form */}
+            {editFormId===phone.id && (
+              <div onClick={e=>e.stopPropagation()} style={{
+                marginTop:10,padding:"12px 14px",borderRadius:10,
+                background:"rgba(0,30,80,0.45)",border:`1px solid ${C.borderHi}`,
+              }}>
+                <div style={{color:C.accent,fontWeight:700,fontSize:12,marginBottom:8}}>✏️ 編輯資料</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                  <Input label="型號" value={editForm.model}
+                    onChange={e=>setEditForm(f=>({...f,model:e.target.value}))}
+                    style={{marginBottom:0}}/>
+                  <Input label="收購價格 NT$" type="number" inputMode="numeric"
+                    value={editForm.purchasePrice}
+                    onChange={e=>setEditForm(f=>({...f,purchasePrice:e.target.value}))}
+                    style={{marginBottom:0}}/>
+                  <Input label="收購來源" value={editForm.source}
+                    onChange={e=>setEditForm(f=>({...f,source:e.target.value}))}
+                    style={{marginBottom:0}}/>
+                  <Input label="收購日期" type="date"
+                    value={editForm.purchaseDate}
+                    onChange={e=>setEditForm(f=>({...f,purchaseDate:e.target.value}))}
+                    style={{marginBottom:0}}/>
+                  <Input label="備註" value={editForm.note}
+                    onChange={e=>setEditForm(f=>({...f,note:e.target.value}))}
+                    style={{marginBottom:0}}/>
+                  {phone.status==="已售出" && (<>
+                    <Input label="售出價格 NT$" type="number" inputMode="numeric"
+                      value={editForm.salePrice}
+                      onChange={e=>setEditForm(f=>({...f,salePrice:e.target.value}))}
+                      style={{marginBottom:0}}/>
+                    <Input label="售出日期" type="date"
+                      value={editForm.saleDate}
+                      onChange={e=>setEditForm(f=>({...f,saleDate:e.target.value}))}
+                      style={{marginBottom:0}}/>
+                  </>)}
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <Btn sm onClick={e=>{e.stopPropagation();handleEditSubmit(phone);}}>✓ 儲存</Btn>
+                  <Btn sm v="ghost" onClick={e=>{e.stopPropagation();setEditFormId(null);}}>取消</Btn>
+                </div>
+              </div>
+            )}
 
             {/* 新增成本 inline form */}
             {costFormId===phone.id && (
