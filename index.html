@@ -97,7 +97,7 @@ async function cloudLoad(key, def) {
 }
 
 // ─── LOCAL FALLBACK ───────────────────────────────────────────────────────────
-const SK = { orders:"a911_orders", purchases:"a911_purchases", expenses:"a911_expenses", catalog:"a911_catalog" };
+const SK = { orders:"a911_orders", purchases:"a911_purchases", expenses:"a911_expenses", catalog:"a911_catalog", stockAdj:"a911_stockAdj" };
 const localLoad = (k,d) => { try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;} };
 const localSave = (k,v) => { try{localStorage.setItem(k,JSON.stringify(v));}catch{} };
 
@@ -2142,7 +2142,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
 }
 
 // ─── INVENTORY PAGE ───────────────────────────────────────────────────────────
-function InventoryPage({stock,catalog,setCatalog,purchases}) {
+function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses,setExpenses,stockAdj,setStockAdj}) {
   window.__vendorList__ = catalog.vendors||DEF.vendors;
   const [filterCat,setFilterCat]     = useState("全部");
   const [stockModal,setStockModal]   = useState(null); // {cat,brand,model}
@@ -2150,6 +2150,93 @@ function InventoryPage({stock,catalog,setCatalog,purchases}) {
   const [managing,setManaging]       = useState(false);
   const [newCatName,setNewCatName]   = useState("");
   const [copyFrom,setCopyFrom]       = useState("");
+
+  // ── 庫存調整 state ────────────────────────────────────────────────────────
+  const [adjTarget,setAdjTarget] = useState(null); // {stockId,cat,brand,model}
+  const [adjForm,setAdjForm]     = useState({qty:"",reason:"盤點補正",note:"",date:today(),affectCost:false,affectExpense:false,unitCost:""});
+  const [showAdjLog,setShowAdjLog] = useState(false);
+
+  const REASONS = ["盤點補正","員工漏記","遺失報廢","補登進貨"];
+
+  function openAdj(stockId,cat,brand,model){
+    setAdjTarget({stockId,cat,brand,model});
+    setAdjForm({qty:"",reason:"盤點補正",note:"",date:today(),affectCost:false,affectExpense:false,unitCost:""});
+  }
+
+  function handleAdj(){
+    const qty=parseInt(adjForm.qty,10);
+    if(!qty||isNaN(qty)){alert("請輸入有效的調整數量");return;}
+    const rec={
+      id:uid(), stockId:adjTarget.stockId,
+      name:`${adjTarget.cat} ${adjTarget.brand} ${adjTarget.model}`,
+      cat:adjTarget.cat, brand:adjTarget.brand, model:adjTarget.model,
+      qty, reason:adjForm.reason, note:adjForm.note, date:adjForm.date,
+      affectCost:adjForm.affectCost, affectExpense:adjForm.affectExpense,
+      createdAt:Date.now(),
+    };
+    // 寫入 stockAdjustments 紀錄
+    const nextAdj=[rec,...(stockAdj||[])];
+    setStockAdj(nextAdj);
+    // 補登進貨：可選新增一筆 purchases
+    if(adjForm.reason==="補登進貨"&&adjForm.affectCost){
+      const uc=Number(adjForm.unitCost)||0;
+      const newPur={
+        id:uid(), date:adjForm.date,
+        itemCat:adjTarget.cat, itemBrand:adjTarget.brand, itemVariant:adjTarget.model,
+        qty:Math.abs(qty), amount:uc*Math.abs(qty),
+        vendorName:"(庫存補登)", note:`庫存調整補登：${adjForm.note||"無備註"}`,
+      };
+      const nextPur=[...(purchases||[]),newPur];
+      setPurchases(nextPur);
+    }
+    // 遺失報廢：可選新增一筆固定支出（寫入當月 expenses）
+    if(adjForm.reason==="遺失報廢"&&adjForm.affectExpense){
+      const mk=adjForm.date.slice(0,7);
+      const lossAmt=Number(adjForm.unitCost)*Math.abs(qty)||0;
+      const cur=expenses[mk]||{items:[]};
+      const newItem={id:uid(),name:`庫存損耗：${adjTarget.cat} ${adjTarget.model}`,amount:lossAmt,note:adjForm.note||""};
+      const nextExp={...expenses,[mk]:{...cur,items:[...(cur.items||[]),newItem]}};
+      setExpenses(nextExp);
+    }
+    setAdjTarget(null);
+    alert(`✅ 已記錄庫存調整：${qty>0?"+":""}${qty} 件\n原因：${adjForm.reason}`);
+  }
+
+  // ── 庫存轉移 state ────────────────────────────────────────────────────────
+  const [transferModal,setTransferModal] = useState(false);
+  const [tfForm,setTfForm] = useState({fromId:"",toId:"",qty:"",note:"",date:today()});
+
+  // 所有有資料的品項清單（供下拉選單）
+  const stockList = useMemo(()=>{
+    const seen=new Set();
+    const list=[];
+    Object.values(stock).forEach(s=>{
+      if(s.totalIn>0&&!seen.has(s.stockId)){
+        seen.add(s.stockId);
+        list.push({stockId:s.stockId, label:`${s.cat} ${s.brand} ${s.model}`});
+      }
+    });
+    return list.sort((a,b)=>a.label.localeCompare(b.label));
+  },[stock]);
+
+  function handleTransfer(){
+    const qty=parseInt(tfForm.qty,10);
+    if(!qty||isNaN(qty)||qty<=0){alert("請輸入有效的正整數數量");return;}
+    if(!tfForm.fromId){alert("請選擇來源品項");return;}
+    if(!tfForm.toId){alert("請選擇目標品項");return;}
+    if(tfForm.fromId===tfForm.toId){alert("來源與目標不可相同");return;}
+    const fromLabel=(stockList.find(s=>s.stockId===tfForm.fromId)||{}).label||tfForm.fromId;
+    const toLabel  =(stockList.find(s=>s.stockId===tfForm.toId  )||{}).label||tfForm.toId;
+    const base={reason:"品項更正",date:tfForm.date,affectCost:false,affectExpense:false,createdAt:Date.now()};
+    const recFrom={...base, id:uid(), stockId:tfForm.fromId, name:fromLabel, qty:-qty,
+      note:`轉移至「${toLabel}」${tfForm.note?`：${tfForm.note}`:""}`};
+    const recTo  ={...base, id:uid(), stockId:tfForm.toId,   name:toLabel,   qty:+qty,
+      note:`從「${fromLabel}」轉入${tfForm.note?`：${tfForm.note}`:""}`};
+    setStockAdj([recFrom,recTo,...(stockAdj||[])]);
+    setTransferModal(false);
+    setTfForm({fromId:"",toId:"",qty:"",note:"",date:today()});
+    alert(`✅ 庫存轉移完成\n「${fromLabel}」－${qty} 件\n「${toLabel}」＋${qty} 件`);
+  }
 
   const cats = Array.isArray(catalog.purchaseCategories) ? catalog.purchaseCategories : DEF.purchaseCategories;
   function sc(next){ setCatalog(next); save(SK.catalog,next); }
@@ -2267,6 +2354,11 @@ function InventoryPage({stock,catalog,setCatalog,purchases}) {
           background:managing?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(0,40,100,0.3)",
           color:managing?"#fff":C.textMid,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,
         }}>{managing?"✓ 完成":"⚙️ 管理"}</button>
+        <button onClick={()=>{setTfForm({fromId:"",toId:"",qty:"",note:"",date:today()});setTransferModal(true);}} style={{
+          padding:"7px 14px",borderRadius:10,border:`1px solid ${C.border}`,
+          background:"rgba(0,40,100,0.3)",
+          color:C.textMid,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,
+        }}>🔄 品項轉移</button>
       </div>
 
       {/* 管理：新增品項 */}
@@ -2345,15 +2437,20 @@ function InventoryPage({stock,catalog,setCatalog,purchases}) {
                                     <span style={{color:C.textMid,fontSize:14,transform:sCol?"rotate(0)":"rotate(180deg)",transition:"transform .2s"}}>⌃</span>
                                   </div>
                                   {!sCol&&(
-                                    <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:3,padding:"6px 8px"}}>
+                                    <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:3,padding:"6px 8px"}}>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,padding:"3px 6px"}}>型號</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>進貨</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>已用</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>庫存</div>
+                                      <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}></div>
                                       {sObj.models.map(m=>{
                                         const sk=stock[catObj.cat+"__"+bObj.brand+"__"+m]||{totalIn:0,totalUsed:0,stock:0};
-                                        const zero=sk.stock<=0&&sk.totalIn>0;
-                                        const low=!zero&&sk.stock<=2&&sk.totalIn>0;
+                                        const skId=getStockId(catalog,catObj.cat,bObj.brand,m);
+                                        // 計算庫存調整偏移量
+                                        const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId).reduce((s,a)=>s+a.qty,0);
+                                        const displayStock=sk.stock+adjOffset;
+                                        const zero=displayStock<=0&&sk.totalIn>0;
+                                        const low=!zero&&displayStock<=2&&sk.totalIn>0;
                                         return(
                                           <React.Fragment key={m}>
                                             <div style={{color:sk.totalIn===0?C.textDim:C.text,fontSize:12,padding:"5px 6px",display:"flex",alignItems:"center",gap:4}}>
@@ -2361,7 +2458,13 @@ function InventoryPage({stock,catalog,setCatalog,purchases}) {
                                             </div>
                                             <div onClick={()=>sk.totalIn>0&&setStockModal({cat:catObj.cat,brand:bObj.brand,model:m})} style={{color:sk.totalIn>0?C.green:C.textDim,fontSize:13,fontWeight:700,textAlign:"center",padding:"5px 0",cursor:sk.totalIn>0?"pointer":"default",textDecoration:sk.totalIn>0?"underline dotted":"none"}}>{sk.totalIn>0?sk.totalIn:"-"}</div>
                                             <div style={{color:C.textMid,fontSize:13,textAlign:"center",padding:"5px 0"}}>{sk.totalUsed>0?sk.totalUsed:"-"}</div>
-                                            <div style={{color:zero?C.red:low?C.orange:sk.totalIn>0?C.accent:C.textDim,fontSize:14,fontWeight:800,textAlign:"center",padding:"5px 0"}}>{sk.totalIn>0?sk.stock:"-"}</div>
+                                            <div style={{color:zero?C.red:low?C.orange:sk.totalIn>0?C.accent:C.textDim,fontSize:14,fontWeight:800,textAlign:"center",padding:"5px 0"}}>
+                                              {sk.totalIn>0?displayStock:"-"}
+                                              {adjOffset!==0&&<span style={{fontSize:9,color:adjOffset>0?C.green:C.red,marginLeft:2}}>{adjOffset>0?"+":""}{adjOffset}</span>}
+                                            </div>
+                                            <div style={{textAlign:"center",padding:"3px 0"}}>
+                                              <button onClick={()=>openAdj(skId,catObj.cat,bObj.brand,m)} style={{padding:"2px 7px",borderRadius:6,border:`1px solid ${C.border}`,background:"rgba(0,100,200,0.18)",color:C.accent,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>調整</button>
+                                            </div>
                                           </React.Fragment>
                                         );
                                       })}
@@ -2458,11 +2561,214 @@ function InventoryPage({stock,catalog,setCatalog,purchases}) {
           </div>
         );
       })()}
+      {/* 品項轉移彈窗 */}
+      {transferModal&&(
+        <div onClick={()=>setTransferModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f3c",border:`1.5px solid ${C.borderHi}`,borderRadius:16,padding:20,width:"100%",maxWidth:460,maxHeight:"88vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div>
+                <div style={{color:C.gold,fontWeight:800,fontSize:15}}>🔄 品項更正 / 庫存轉移</div>
+                <div style={{color:C.textDim,fontSize:11,marginTop:3}}>工單選錯品項時，把庫存從來源扣回、補到正確品項</div>
+              </div>
+              <button onClick={()=>setTransferModal(false)} style={{background:"none",border:"none",color:C.textDim,fontSize:20,cursor:"pointer"}}>✕</button>
+            </div>
+
+            {/* 來源品項 */}
+            <div style={{marginBottom:12}}>
+              <div style={{color:C.red,fontSize:11,fontWeight:700,marginBottom:4}}>📤 來源品項（扣庫存）</div>
+              <select value={tfForm.fromId} onChange={e=>setTfForm(f=>({...f,fromId:e.target.value}))}
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,20,70,0.9)",border:`1px solid ${C.border}`,borderRadius:9,color:tfForm.fromId?C.text:C.textDim,padding:"9px 13px",fontSize:13,outline:"none",fontFamily:"inherit",cursor:"pointer"}}>
+                <option value="">－ 選擇來源品項 －</option>
+                {stockList.filter(s=>s.stockId!==tfForm.toId).map(s=>(
+                  <option key={s.stockId} value={s.stockId}>{s.label}</option>
+                ))}
+              </select>
+              {tfForm.fromId&&(()=>{
+                const s=stock[tfForm.fromId];
+                const adjOff=(stockAdj||[]).filter(a=>a.stockId===tfForm.fromId).reduce((x,a)=>x+a.qty,0);
+                const cur=(s?.stock||0)+adjOff;
+                return <div style={{color:cur>0?C.textDim:C.red,fontSize:11,marginTop:4}}>目前庫存：<span style={{fontWeight:700,color:cur>0?C.accent:C.red}}>{cur}</span> 件</div>;
+              })()}
+            </div>
+
+            {/* 目標品項 */}
+            <div style={{marginBottom:12}}>
+              <div style={{color:C.green,fontSize:11,fontWeight:700,marginBottom:4}}>📥 目標品項（加庫存）</div>
+              <select value={tfForm.toId} onChange={e=>setTfForm(f=>({...f,toId:e.target.value}))}
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,20,70,0.9)",border:`1px solid ${C.border}`,borderRadius:9,color:tfForm.toId?C.text:C.textDim,padding:"9px 13px",fontSize:13,outline:"none",fontFamily:"inherit",cursor:"pointer"}}>
+                <option value="">－ 選擇目標品項 －</option>
+                {stockList.filter(s=>s.stockId!==tfForm.fromId).map(s=>(
+                  <option key={s.stockId} value={s.stockId}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 方向示意 */}
+            {tfForm.fromId&&tfForm.toId&&(
+              <div style={{marginBottom:12,padding:"8px 12px",background:"rgba(0,100,200,0.1)",border:`1px solid rgba(0,100,200,0.25)`,borderRadius:9,fontSize:12,color:C.textMid,textAlign:"center"}}>
+                <span style={{color:C.red}}>{(stockList.find(s=>s.stockId===tfForm.fromId)||{}).label}</span>
+                <span style={{color:C.accent,margin:"0 8px"}}>→</span>
+                <span style={{color:C.green}}>{(stockList.find(s=>s.stockId===tfForm.toId)||{}).label}</span>
+              </div>
+            )}
+
+            {/* 數量 */}
+            <div style={{marginBottom:12}}>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>轉移數量</div>
+              <input type="number" min="1" value={tfForm.qty} onChange={e=>setTfForm(f=>({...f,qty:e.target.value}))}
+                placeholder="請輸入正整數"
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:16,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+
+            {/* 備註 */}
+            <div style={{marginBottom:12}}>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>備註（選填）</div>
+              <input value={tfForm.note} onChange={e=>setTfForm(f=>({...f,note:e.target.value}))}
+                placeholder="例：工單 #1234 選錯型號"
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+
+            {/* 日期 */}
+            <div style={{marginBottom:18}}>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>日期</div>
+              <input type="date" value={tfForm.date} onChange={e=>setTfForm(f=>({...f,date:e.target.value}))}
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit",colorScheme:"dark"}}/>
+            </div>
+
+            <div style={{padding:"8px 12px",background:"rgba(255,200,0,0.07)",border:`1px solid rgba(255,200,0,0.2)`,borderRadius:8,fontSize:11,color:C.gold,marginBottom:14}}>
+              ⚠️ 此操作只修正庫存數量並留下紀錄，不影響工單收入、進貨成本或月結算利潤。
+            </div>
+
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setTransferModal(false)} style={{flex:1,padding:"10px",borderRadius:10,border:`1px solid ${C.border}`,background:"rgba(0,20,60,0.5)",color:C.textMid,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>取消</button>
+              <button onClick={handleTransfer} style={{flex:2,padding:"10px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.accent2},${C.accent})`,color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>🔄 確認轉移</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 庫存調整彈窗 */}
+      {adjTarget&&(
+        <div onClick={()=>setAdjTarget(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f3c",border:`1.5px solid ${C.borderHi}`,borderRadius:16,padding:20,width:"100%",maxWidth:460,maxHeight:"88vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div>
+                <div style={{color:C.gold,fontWeight:800,fontSize:15}}>📦 庫存調整</div>
+                <div style={{color:C.textMid,fontSize:12,marginTop:2}}>{adjTarget.cat} · {adjTarget.brand} · {adjTarget.model}</div>
+                <div style={{color:C.textDim,fontSize:10}}>stockId: {adjTarget.stockId}</div>
+              </div>
+              <button onClick={()=>setAdjTarget(null)} style={{background:"none",border:"none",color:C.textDim,fontSize:20,cursor:"pointer"}}>✕</button>
+            </div>
+
+            {/* 調整數量 */}
+            <div style={{marginBottom:12}}>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>調整數量（正數=加庫存，負數=減庫存）</div>
+              <input type="number" value={adjForm.qty} onChange={e=>setAdjForm(f=>({...f,qty:e.target.value}))}
+                placeholder="例：+3 或 -2"
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:16,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+
+            {/* 調整原因 */}
+            <div style={{marginBottom:12}}>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>調整原因</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {REASONS.map(r=>(
+                  <button key={r} onClick={()=>setAdjForm(f=>({...f,reason:r,affectCost:false,affectExpense:false}))}
+                    style={{padding:"6px 12px",borderRadius:20,border:`1.5px solid ${adjForm.reason===r?C.accent:C.border}`,
+                      background:adjForm.reason===r?"rgba(0,100,200,0.25)":"rgba(0,15,50,0.5)",
+                      color:adjForm.reason===r?C.accent:C.textMid,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 補登進貨：是否列入進貨成本 */}
+            {adjForm.reason==="補登進貨"&&(
+              <div style={{marginBottom:12,padding:10,background:"rgba(0,200,100,0.08)",border:`1px solid rgba(0,200,100,0.2)`,borderRadius:9}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:adjForm.affectCost?8:0}}>
+                  <input type="checkbox" checked={adjForm.affectCost} onChange={e=>setAdjForm(f=>({...f,affectCost:e.target.checked}))}/>
+                  <span style={{color:C.green,fontSize:12,fontWeight:700}}>列入進貨成本（自動新增一筆進貨記錄）</span>
+                </label>
+                {adjForm.affectCost&&(
+                  <input type="number" value={adjForm.unitCost} onChange={e=>setAdjForm(f=>({...f,unitCost:e.target.value}))}
+                    placeholder="單件成本（元）"
+                    style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+                )}
+              </div>
+            )}
+
+            {/* 遺失報廢：是否列入損耗支出 */}
+            {adjForm.reason==="遺失報廢"&&(
+              <div style={{marginBottom:12,padding:10,background:"rgba(255,40,70,0.07)",border:`1px solid rgba(255,40,70,0.2)`,borderRadius:9}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:adjForm.affectExpense?8:0}}>
+                  <input type="checkbox" checked={adjForm.affectExpense} onChange={e=>setAdjForm(f=>({...f,affectExpense:e.target.checked}))}/>
+                  <span style={{color:C.red,fontSize:12,fontWeight:700}}>列入損耗支出（寫入當月固定支出）</span>
+                </label>
+                {adjForm.affectExpense&&(
+                  <input type="number" value={adjForm.unitCost} onChange={e=>setAdjForm(f=>({...f,unitCost:e.target.value}))}
+                    placeholder="單件損耗金額（元）"
+                    style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+                )}
+              </div>
+            )}
+
+            {/* 備註 */}
+            <div style={{marginBottom:12}}>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>備註</div>
+              <input value={adjForm.note} onChange={e=>setAdjForm(f=>({...f,note:e.target.value}))}
+                placeholder="選填"
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+
+            {/* 日期 */}
+            <div style={{marginBottom:18}}>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>日期</div>
+              <input type="date" value={adjForm.date} onChange={e=>setAdjForm(f=>({...f,date:e.target.value}))}
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit",colorScheme:"dark"}}/>
+            </div>
+
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setAdjTarget(null)} style={{flex:1,padding:"10px",borderRadius:10,border:`1px solid ${C.border}`,background:"rgba(0,20,60,0.5)",color:C.textMid,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>取消</button>
+              <button onClick={handleAdj} style={{flex:2,padding:"10px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.accent2},${C.accent})`,color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✅ 確認調整</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 庫存調整紀錄 */}
+      {(stockAdj||[]).length>0&&(
+        <Card style={{marginTop:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:showAdjLog?12:0}}>
+            <H style={{margin:0}}>📋 庫存調整紀錄</H>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{background:C.accent,color:"#fff",borderRadius:10,fontSize:11,fontWeight:800,padding:"1px 8px"}}>{(stockAdj||[]).length}</span>
+              <button onClick={()=>setShowAdjLog(s=>!s)} style={{background:"none",border:"none",color:C.textDim,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>{showAdjLog?"▲ 收合":"▼ 展開"}</button>
+            </div>
+          </div>
+          {showAdjLog&&(
+            <div>
+              {(stockAdj||[]).slice(0,30).map(a=>(
+                <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"9px 0",borderBottom:`1px solid ${C.border}`}}>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                      <span style={{color:C.text,fontSize:12,fontWeight:700}}>{a.name}</span>
+                      <span style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:a.reason==="品項更正"?"rgba(150,50,255,0.2)":"rgba(0,100,200,0.2)",color:a.reason==="品項更正"?"#c084fc":C.accent,fontWeight:700}}>{a.reason}</span>
+                      {a.affectCost&&<span style={{fontSize:10,color:C.green}}>💰 計成本</span>}
+                      {a.affectExpense&&<span style={{fontSize:10,color:C.red}}>📉 計損耗</span>}
+                    </div>
+                    <div style={{color:C.textDim,fontSize:11,marginTop:3}}>{a.date}{a.note&&` · ${a.note}`}</div>
+                  </div>
+                  <div style={{color:a.qty>0?C.green:C.red,fontWeight:800,fontSize:15,flexShrink:0,marginLeft:8}}>{a.qty>0?"+":""}{a.qty}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   );
 }
-
-// 管理模式下的品項編輯器（獨立元件避免 JSX 過深）
 function InvCatEditor({catObj,ci,cats,updateCats,stock,tog,collapsed}) {
   const k="mc_"+catObj.cat;
   const isCol=!!collapsed[k];
@@ -5010,6 +5316,7 @@ function App() {
   const [orders,setOrders]= useState(()=>load(SK.orders,[]));
   const [purchases,setPur]= useState(()=>load(SK.purchases,[]));
   const [expenses,setExp] = useState(()=>load(SK.expenses,{}));
+  const [stockAdj,setStockAdj] = useState(()=>load(SK.stockAdj,[]));
   const [catalog,setCat]  = useState(()=>{
     const s=load(SK.catalog,null); if(!s) return DEF;
     return {...DEF,...s,
@@ -5174,7 +5481,7 @@ function App() {
       <div style={{padding:"16px 14px 32px",position:"relative",zIndex:1}}>
         {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases}/>}
         {page==="purchases"&&<PurchasesPage purchases={purchases} setPurchases={setPur} catalog={catalog} stock={stock} orders={orders}/>}
-        {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases}/>}
+        {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} expenses={expenses} setExpenses={e=>{setExp(e);save(SK.expenses,e);}} stockAdj={stockAdj} setStockAdj={a=>{setStockAdj(a);save(SK.stockAdj,a);}}/>}
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
         {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses}/>}
         {page==="lookup"   &&<LookupPage/>}
