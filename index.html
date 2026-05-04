@@ -1264,6 +1264,16 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
                         <span style={{color:C.text,fontSize:13,fontWeight:700}}>{p.itemName||p.itemCat||"—"}</span>
                         {(p.itemBrand||p.itemVariant)&&<span style={{color:C.accent,fontSize:11,background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:4,padding:"1px 5px"}}>{[p.itemBrand,p.itemVariant].filter(Boolean).join(" ")}</span>}
                         {(()=>{
+                          // 顯示自訂庫存ID（只顯示使用者手動設定的，不顯示 default key）
+                          const _cats=Array.isArray(catalog.purchaseCategories)?catalog.purchaseCategories:[];
+                          const _cat=_cats.find(c=>c.cat===p.itemCat);
+                          const _brand=_cat?.brands?.find(b=>b.brand===p.itemBrand);
+                          const _ser=_brand?.series?.find(s=>s.models?.includes(p.itemVariant));
+                          const _sid=_ser?.stockIds?.[p.itemVariant];
+                          if(!_sid) return null;
+                          return <span style={{color:C.gold,fontSize:10,background:"rgba(255,200,0,0.08)",border:"1px solid rgba(255,200,0,0.3)",borderRadius:4,padding:"2px 6px",display:"inline-block",verticalAlign:"middle",wordBreak:"break-word",whiteSpace:"normal"}} title={`庫存ID: ${_sid}`}>🔗 庫存ID：{_sid}</span>;
+                        })()}
+                        {(()=>{
                           const relVars=getRelatedVariants(p.itemVariant);
                           if(!relVars.length||!q) return null;
                           // 只在因為通用ID才搜到（搜尋詞不直接匹配 itemVariant）時顯示
