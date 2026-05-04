@@ -1700,14 +1700,25 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
     const lines = batchText.split("\n").map(l=>l.trim()).filter(Boolean);
     const recs = [];
 
-    // 取得該 itemCat 下所有已知型號（從 catalog），用於最長匹配
-    const knownModels = [];
+    // 取得該 itemCat 下所有已知型號，建立「使用者可能輸入的縮寫 → 正式型號」對照表
+    // 例：「11 Pro Max」→「iPhone 11 Pro Max」
+    const modelMap = []; // [{input: string（小寫）, canonical: string（正式）}]
     const catObj = parsedCats.find(c=>c.cat===itemCat);
+    const brandPrefix = form.itemBrand ? form.itemBrand+" " : null;
     if(catObj){
-      (catObj.brands||[]).forEach(b=>(b.series||[]).forEach(s=>(s.models||[]).forEach(m=>knownModels.push(m))));
+      (catObj.brands||[]).forEach(b=>(b.series||[]).forEach(s=>(s.models||[]).forEach(m=>{
+        modelMap.push({input: m.toLowerCase(), canonical: m}); // 完整名稱
+        // 去掉品牌前綴的縮寫版（如「iPhone 11 Pro Max」→「11 Pro Max」）
+        for(const brand of [b.brand+" ", "Apple ", "iPhone ", "iPad ", "Mac "]){
+          if(m.toLowerCase().startsWith(brand.toLowerCase())){
+            modelMap.push({input: m.slice(brand.length).toLowerCase(), canonical: m});
+            break;
+          }
+        }
+      })));
     }
-    // 依長度降序，優先匹配較長型號（避免 "13 Pro" 被 "13" 先截走）
-    knownModels.sort((a,b)=>b.length-a.length);
+    // 依 input 長度降序，優先匹配最長型號（避免「11」截走「11 Pro Max」）
+    modelMap.sort((a,b)=>b.input.length-a.input.length);
 
     lines.forEach(line=>{
       // 支援有/無 x數量：「型號 顏色 x數量」或「型號 顏色」
@@ -1716,18 +1727,22 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
       const body = qtyMatch ? line.slice(0, line.lastIndexOf(qtyMatch[0])).trim() : line.trim();
       if(!body){ console.log("[批次進貨] 空行，跳過：", line); return; }
 
-      // 嘗試從已知型號中找最長前綴匹配
+      // 從 modelMap 找最長的前綴匹配（input 已小寫，body 轉小寫比對）
       let itemVariant = "";
       let noteColor   = "";
-      const matched = knownModels.find(m=>body.toLowerCase().startsWith(m.toLowerCase()));
-      if(matched){
-        itemVariant = matched;
-        noteColor   = body.slice(matched.length).trim();
+      const bodyLow = body.toLowerCase();
+      const hit = modelMap.find(({input})=>{
+        // 必須是完整 token 邊界：後面要是空格或字串結尾，避免「11」匹配「11 Pro」的前段
+        return bodyLow.startsWith(input) &&
+          (body.length===input.length || body[input.length]===" ");
+      });
+      if(hit){
+        itemVariant = hit.canonical;
+        noteColor   = body.slice(hit.input.length).trim();
       } else {
-        // catalog 找不到就用最後一個空格分割（型號=前段，顏色=後段）
-        const spIdx = body.lastIndexOf(" ");
-        itemVariant = spIdx>0 ? body.slice(0,spIdx).trim() : body;
-        noteColor   = spIdx>0 ? body.slice(spIdx+1).trim() : "";
+        // catalog 找不到：整行（去數量後）視為型號，無顏色
+        itemVariant = body;
+        noteColor   = "";
       }
 
       // 從 catalog 反查 brand / series，確保 useStock 能正確匹配
