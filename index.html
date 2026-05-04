@@ -1554,6 +1554,7 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:13}}>
         <Stat label="筆數" value={filtered.length} icon="📋"/>
         <Stat label="營業額" value={fmt(totalRev)} icon="💰"/>
+        <Stat label="零件成本" value={fmt(filtered.reduce((a,o)=>a+(o.totalCost||0),0))} color={C.orange} icon="📦"/>
         <Stat label="利潤" value={fmt(totalProfit)} color={totalProfit>=0?C.green:C.red} icon="📈"/>
       </div>
 
