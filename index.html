@@ -1699,14 +1699,37 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
     const parsedCats = Array.isArray(catalog.purchaseCategories) ? catalog.purchaseCategories : DEF.purchaseCategories;
     const lines = batchText.split("\n").map(l=>l.trim()).filter(Boolean);
     const recs = [];
+
+    // 取得該 itemCat 下所有已知型號（從 catalog），用於最長匹配
+    const knownModels = [];
+    const catObj = parsedCats.find(c=>c.cat===itemCat);
+    if(catObj){
+      (catObj.brands||[]).forEach(b=>(b.series||[]).forEach(s=>(s.models||[]).forEach(m=>knownModels.push(m))));
+    }
+    // 依長度降序，優先匹配較長型號（避免 "13 Pro" 被 "13" 先截走）
+    knownModels.sort((a,b)=>b.length-a.length);
+
     lines.forEach(line=>{
-      const m = line.match(/^(.+?)\s+x(\d+)\s*$/i);
-      if(!m){ console.log("[批次進貨] 無法解析，跳過：", line); return; }
-      const variantRaw = m[1].trim();
-      const qty = Number(m[2]) || 1;
-      const spIdx = variantRaw.lastIndexOf(" ");
-      const itemVariant = spIdx>0 ? variantRaw.slice(0,spIdx).trim() : variantRaw;
-      const noteColor   = spIdx>0 ? variantRaw.slice(spIdx+1).trim()  : "";
+      // 支援有/無 x數量：「型號 顏色 x數量」或「型號 顏色」
+      const qtyMatch = line.match(/\s+x(\d+)\s*$/i);
+      const qty = qtyMatch ? (Number(qtyMatch[1])||1) : 1;
+      const body = qtyMatch ? line.slice(0, line.lastIndexOf(qtyMatch[0])).trim() : line.trim();
+      if(!body){ console.log("[批次進貨] 空行，跳過：", line); return; }
+
+      // 嘗試從已知型號中找最長前綴匹配
+      let itemVariant = "";
+      let noteColor   = "";
+      const matched = knownModels.find(m=>body.toLowerCase().startsWith(m.toLowerCase()));
+      if(matched){
+        itemVariant = matched;
+        noteColor   = body.slice(matched.length).trim();
+      } else {
+        // catalog 找不到就用最後一個空格分割（型號=前段，顏色=後段）
+        const spIdx = body.lastIndexOf(" ");
+        itemVariant = spIdx>0 ? body.slice(0,spIdx).trim() : body;
+        noteColor   = spIdx>0 ? body.slice(spIdx+1).trim() : "";
+      }
+
       // 從 catalog 反查 brand / series，確保 useStock 能正確匹配
       const bs = findBrandSeries(parsedCats, itemCat, itemVariant);
       const resolvedBrand  = form.itemBrand  || bs.itemBrand;
@@ -1724,7 +1747,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
         itemVariant,
         qty,
         amount: Number(form.amount),
-        note: noteColor || form.note,
+        note: noteColor || itemCat,  // 無顏色/規格時，自動帶入品項名稱
       });
     });
     if(!recs.length){ console.log("[批次進貨] 沒有成功解析的行"); return; }
