@@ -2000,7 +2000,20 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
               <span style={{color:C.text}}>x {p.qty||1}</span>
               <span style={{color:C.green,fontWeight:800}}>{fmt(Math.round((Number(p.amount)||0)/(Number(p.qty)||1)))}</span>
               <span style={{color:C.gold,fontWeight:800}}>{fmt(p.amount||0)}</span>
-              <span style={{color:C.textDim,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.note||"—"}</span>
+              <span style={{overflow:"hidden"}}>
+                {(()=>{
+                  const usages=(orders||[]).flatMap(o=>(o.items||[]).filter(i=>{const pid=i.purId||(i.id.startsWith("pur_")?i.id.replace(/^pur_/,"").replace(/_\d+$/,""):null);return pid===p.id;}).map(()=>({date:o.date,model:o.modelName||o.modelFree||""})));
+                  return (<>
+                    {p.note&&<div style={{color:C.textDim,textOverflow:"ellipsis",overflow:"hidden",whiteSpace:"nowrap"}}>{p.note}</div>}
+                    {usages.length>0
+                      ? <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:p.note?2:0}}>
+                          {usages.map((u,i)=><span key={i} style={{fontSize:10,color:C.green,background:"rgba(0,180,80,0.12)",border:"1px solid rgba(0,180,80,0.3)",borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap"}}>✅ {u.date}{u.model?" · "+u.model:""}</span>)}
+                        </div>
+                      : (!p.note&&<span style={{color:C.textDim}}>—</span>)
+                    }
+                  </>);
+                })()}
+              </span>
             </div>
           ))
         }
