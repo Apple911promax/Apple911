@@ -2847,6 +2847,141 @@ function ReportsPage({orders,purchases,expenses}) {
     };
   },[orders]);
 
+  // ── 圖形報表：付款方式統計 ────────────────────────────────────────────────────
+  const payStats = useMemo(()=>{
+    const m={cash:0,linepay:0,transfer:0,other:0};
+    orders.forEach(o=>{
+      const ps=(o.payments||[]);
+      if(!ps.length){m.cash++;return;}
+      ps.forEach(p=>{
+        const s=(p||"").toLowerCase();
+        if(s.includes("line"))m.linepay++;
+        else if(s.includes("轉帳")||s.includes("transfer"))m.transfer++;
+        else if(s.includes("現金")||s.includes("cash"))m.cash++;
+        else m.other++;
+      });
+    });
+    return m;
+  },[orders]);
+
+  // ── 圖形報表：折線圖 ─────────────────────────────────────────────────────────
+  function LineChart({data,labels,color,w,h}){
+    const pad={t:22,r:16,b:34,l:54};
+    const iw=w-pad.l-pad.r; const ih=h-pad.t-pad.b;
+    const max=Math.max(...data,1);
+    const pts=data.map((v,i)=>{
+      const x=pad.l+(i/(data.length-1||1))*iw;
+      const y=pad.t+(1-v/max)*ih;
+      return [x,y];
+    });
+    const poly=pts.map(p=>p.join(",")).join(" ");
+    const area=`M ${pts[0][0]},${pts[0][1]} `+pts.slice(1).map(p=>`L ${p[0]},${p[1]}`).join(" ")+` L ${pts[pts.length-1][0]},${pad.t+ih} L ${pts[0][0]},${pad.t+ih} Z`;
+    const ticks=4;
+    return (
+      <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{display:"block",overflow:"visible"}}>
+        {Array.from({length:ticks+1},(_,i)=>{
+          const v=Math.round(max*(ticks-i)/ticks);
+          const y=pad.t+(i/ticks)*ih;
+          return <g key={i}>
+            <line x1={pad.l} y1={y} x2={pad.l+iw} y2={y} stroke="rgba(0,155,255,0.1)" strokeWidth="1"/>
+            <text x={pad.l-5} y={y+4} textAnchor="end" fontSize="10" fill="#4c789e">{v>=1000?`${Math.round(v/1000)}k`:v}</text>
+          </g>;
+        })}
+        <defs>
+          <linearGradient id="lgArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.25"/>
+            <stop offset="100%" stopColor={color} stopOpacity="0.02"/>
+          </linearGradient>
+        </defs>
+        <path d={area} fill="url(#lgArea)"/>
+        <polyline points={poly} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"/>
+        {pts.map(([x,y],i)=>(
+          <circle key={i} cx={x} cy={y} r="4" fill={color} stroke="#050d1a" strokeWidth="1.5"/>
+        ))}
+        {labels.map((l,i)=>{
+          const x=pad.l+(i/(labels.length-1||1))*iw;
+          return <text key={i} x={x} y={pad.t+ih+20} textAnchor="middle" fontSize="10" fill="#4c789e">{l}</text>;
+        })}
+        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t+ih} stroke="rgba(0,155,255,0.2)" strokeWidth="1"/>
+        <line x1={pad.l} y1={pad.t+ih} x2={pad.l+iw} y2={pad.t+ih} stroke="rgba(0,155,255,0.2)" strokeWidth="1"/>
+      </svg>
+    );
+  }
+
+  // ── 圖形報表：長條圖 ─────────────────────────────────────────────────────────
+  function BarChart({data,labels,w,h}){
+    const pad={t:22,r:16,b:34,l:54};
+    const iw=w-pad.l-pad.r; const ih=h-pad.t-pad.b;
+    const allVals=data.flatMap(d=>[d.rev,d.purCost,d.fixCost,Math.abs(d.profit)]);
+    const max=Math.max(...allVals,1);
+    const gw=iw/data.length;
+    const bw=Math.max(4,gw*0.20);
+    const colors={rev:"#00c2ff",purCost:"#ff8c40",fixCost:"#ffc840",profit:"#00e8a0",profitNeg:"#ff3d5a"};
+    const ticks=4;
+    return (
+      <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{display:"block",overflow:"visible"}}>
+        {Array.from({length:ticks+1},(_,i)=>{
+          const v=Math.round(max*(ticks-i)/ticks);
+          const y=pad.t+(i/ticks)*ih;
+          return <g key={i}>
+            <line x1={pad.l} y1={y} x2={pad.l+iw} y2={y} stroke="rgba(0,155,255,0.1)" strokeWidth="1"/>
+            <text x={pad.l-5} y={y+4} textAnchor="end" fontSize="10" fill="#4c789e">{v>=1000?`${Math.round(v/1000)}k`:v}</text>
+          </g>;
+        })}
+        {data.map((d,i)=>{
+          const cx=pad.l+i*gw+gw/2;
+          const barH=(v)=>Math.max(1,(v/max)*ih);
+          const bars=[
+            {v:d.rev,c:colors.rev,offset:-bw*1.65},
+            {v:d.purCost,c:colors.purCost,offset:-bw*0.55},
+            {v:d.fixCost,c:colors.fixCost,offset:bw*0.55},
+            {v:Math.abs(d.profit),c:d.profit>=0?colors.profit:colors.profitNeg,offset:bw*1.65},
+          ];
+          return <g key={i}>
+            {bars.map((b,j)=>{
+              const bh=barH(b.v);
+              return <rect key={j} x={cx+b.offset-bw/2} y={pad.t+ih-bh} width={bw} height={bh} fill={b.c} rx="1.5" opacity="0.85"/>;
+            })}
+            <text x={cx} y={pad.t+ih+20} textAnchor="middle" fontSize="10" fill="#4c789e">{labels[i]}</text>
+          </g>;
+        })}
+        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t+ih} stroke="rgba(0,155,255,0.2)" strokeWidth="1"/>
+        <line x1={pad.l} y1={pad.t+ih} x2={pad.l+iw} y2={pad.t+ih} stroke="rgba(0,155,255,0.2)" strokeWidth="1"/>
+      </svg>
+    );
+  }
+
+  // ── 圖形報表：圓餅圖 ─────────────────────────────────────────────────────────
+  function PieChart({data,w}){
+    const r=w*0.34; const cx=w/2; const cy=w*0.42;
+    const total=data.reduce((a,d)=>a+d.v,0)||1;
+    let angle=-Math.PI/2;
+    const slices=data.map(d=>{
+      const sweep=(d.v/total)*Math.PI*2;
+      const a0=angle; angle+=sweep;
+      const a1=angle;
+      const x0=cx+r*Math.cos(a0); const y0=cy+r*Math.sin(a0);
+      const x1=cx+r*Math.cos(a1); const y1=cy+r*Math.sin(a1);
+      const large=sweep>Math.PI?1:0;
+      const path=`M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} Z`;
+      const midA=(a0+a1)/2;
+      return {...d,path,midA,pct:Math.round(d.v/total*100)};
+    });
+    return (
+      <svg width="100%" viewBox={`0 0 ${w} ${w*0.86}`} style={{display:"block"}}>
+        {slices.map((s,i)=>(
+          <path key={i} d={s.path} fill={s.color} opacity="0.88" stroke="#050d1a" strokeWidth="1.5"/>
+        ))}
+        {slices.map((s,i)=>{
+          if(s.pct<5)return null;
+          const lx=cx+(r*0.63)*Math.cos(s.midA);
+          const ly=cy+(r*0.63)*Math.sin(s.midA);
+          return <text key={i} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontSize="11" fontWeight="700" fill="#fff">{s.pct}%</text>;
+        })}
+      </svg>
+    );
+  }
+
   return (
     <div>
       <div style={{display:"flex",gap:6,marginBottom:15,flexWrap:"wrap"}}>
@@ -2855,6 +2990,7 @@ function ReportsPage({orders,purchases,expenses}) {
         {tb("monthly","🔍 月份跨年")}
         {tb("daily","📈 累計盈虧")}
         {tb("analysis","📊 賺錢分析")}
+        {tb("chart","📉 圖形報表")}
       </div>
 
       {tab==="annual"&&(<div>
@@ -2991,6 +3127,77 @@ function ReportsPage({orders,purchases,expenses}) {
             </div>
           ))}
         </Card>
+      </div>)}
+
+      {tab==="chart"&&(<div>
+        {/* 年份選擇 */}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+          <select value={y1} onChange={e=>setY1(Number(e.target.value))} style={selBase}>{years.map(y=><option key={y} value={y}>{y}年</option>)}</select>
+          <span style={{color:C.textDim,fontSize:12}}>資料年份</span>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
+          {/* 月營業額折線圖 */}
+          <Card style={{marginBottom:0,minHeight:460}}>
+            <H>📈 月營業額趨勢（{y1}年）</H>
+            <LineChart data={d1.map(d=>d.rev)} labels={MZ.map((_,i)=>String(i+1)+"月")} color={C.accent} w={500} h={320}/>
+          </Card>
+
+          {/* 收入/支出/淨利長條圖 */}
+          <Card style={{marginBottom:0,minHeight:460}}>
+            <H>📊 月份收支明細（{y1}年）</H>
+            <BarChart
+              data={d1.map((d,i)=>{
+                const mo2=orders.filter(o=>o.date?.slice(0,7)===mkey(y1,i+1));
+                const lp2=mo2.reduce((a,o)=>a+(o.linePayFee||0)+(o.linePayTax||0),0);
+                const purCost=purchases.filter(p=>p.date?.slice(0,7)===mkey(y1,i+1)).reduce((a,p)=>a+p.amount,0);
+                const fixCost=((expenses[mkey(y1,i+1)]||{}).items||[]).reduce((a,x)=>a+x.amount,0);
+                return {rev:d.rev,purCost,fixCost,profit:d.rev-purCost-fixCost-lp2};
+              })}
+              labels={MZ.map((_,i)=>String(i+1))}
+              w={500} h={330}
+            />
+            <div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:14}}>
+              {[{c:C.accent,l:"營業額"},{c:C.orange,l:"進貨成本"},{c:C.gold,l:"固定支出"},{c:C.green,l:"淨利"}].map(x=>(
+                <div key={x.l} style={{display:"flex",alignItems:"center",gap:5}}>
+                  <div style={{width:12,height:12,borderRadius:2,background:x.c,opacity:0.88}}/>
+                  <span style={{color:C.textMid,fontSize:13}}>{x.l}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* 付款方式圓餅圖 */}
+          <Card style={{marginBottom:0,minHeight:460}}>
+            <H>💳 付款方式比例（全部工單）</H>
+            {orders.length===0
+              ?<div style={{color:C.textDim,fontSize:12,textAlign:"center",padding:12}}>尚無工單資料</div>
+              :<div>
+                <div style={{maxWidth:320,margin:"0 auto"}}>
+                  <PieChart w={300} data={[
+                    {v:payStats.cash,    label:"現金",   color:C.green},
+                    {v:payStats.linepay, label:"Line Pay",color:C.accent},
+                    {v:payStats.transfer,label:"轉帳",   color:C.gold},
+                    {v:payStats.other,   label:"其他",   color:C.textMid},
+                  ].filter(d=>d.v>0)}/>
+                </div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center",marginTop:16}}>
+                  {[
+                    {v:payStats.cash,    label:"現金",   color:C.green},
+                    {v:payStats.linepay, label:"Line Pay",color:C.accent},
+                    {v:payStats.transfer,label:"轉帳",   color:C.gold},
+                    {v:payStats.other,   label:"其他",   color:C.textMid},
+                  ].filter(d=>d.v>0).map(d=>(
+                    <div key={d.label} style={{display:"flex",alignItems:"center",gap:5}}>
+                      <div style={{width:12,height:12,borderRadius:2,background:d.color,opacity:0.88,flexShrink:0}}/>
+                      <span style={{color:C.textMid,fontSize:13,whiteSpace:"nowrap"}}>{d.label} {d.v}筆</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            }
+          </Card>
+        </div>
       </div>)}
     </div>
   );
