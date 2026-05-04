@@ -1292,6 +1292,13 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
                         <span style={{color:C.green,fontSize:12,fontWeight:700}}>單價 {fmt(unitCost)}</span>
                       </div>
                       {p.note&&<div style={{color:C.textDim,fontSize:11,marginTop:2}}>備註：{p.note}</div>}
+                      {(()=>{
+                        const usages=(orders||[]).flatMap(o=>(o.items||[]).filter(i=>{const pid=i.purId||(i.id.startsWith("pur_")?i.id.replace(/^pur_/,"").replace(/_\d+$/,""):null);return pid===p.id;}).map(()=>({date:o.date,model:o.modelName||o.modelFree||""})));
+                        if(!usages.length) return null;
+                        return <div style={{marginTop:4,display:"flex",flexWrap:"wrap",gap:4}}>
+                          {usages.map((u,i)=><span key={i} style={{fontSize:10,color:C.green,background:"rgba(0,180,80,0.12)",border:"1px solid rgba(0,180,80,0.3)",borderRadius:5,padding:"1px 6px"}}>✅ 已用 {u.date}{u.model?" · "+u.model:""}</span>)}
+                        </div>;
+                      })()}
                     </div>
                     <button
                       onClick={()=>{
