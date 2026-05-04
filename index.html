@@ -1677,24 +1677,40 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
   // ── 批次進貨模式 ─────────────────────────────────────────────────────────────
   const [batchMode, setBatchMode] = useState(false);
   const [batchText, setBatchText] = useState("");
+  const [batchPending, setBatchPending] = useState([]); // 暫存，未正式寫入
+
+  // 從 catalog 反查 model 所屬的 itemBrand / itemSeries
+  function findBrandSeries(parsedCats, itemCat, model) {
+    const catObj = parsedCats.find(c=>c.cat===itemCat);
+    if(!catObj) return {itemBrand:"", itemSeries:""};
+    for(const b of (catObj.brands||[])){
+      for(const s of (b.series||[])){
+        if((s.models||[]).includes(model)) return {itemBrand:b.brand, itemSeries:s.name};
+      }
+    }
+    return {itemBrand:"", itemSeries:""};
+  }
 
   function submitBatch(){
     if(!batchText.trim()) return;
     const vendorName = form.vendor==="_custom" ? form.customVendor : form.vendor;
     const itemCat    = form.itemCat==="_custom"  ? (form._customCat||"").trim() : form.itemCat;
     if(!form.amount || !itemCat){ console.log("[批次進貨] 請先填寫品項與金額"); return; }
+    const parsedCats = Array.isArray(catalog.purchaseCategories) ? catalog.purchaseCategories : DEF.purchaseCategories;
     const lines = batchText.split("\n").map(l=>l.trim()).filter(Boolean);
     const recs = [];
     lines.forEach(line=>{
-      // 格式：型號+顏色 x數量，例：16 Pro Max 黑 x2
       const m = line.match(/^(.+?)\s+x(\d+)\s*$/i);
       if(!m){ console.log("[批次進貨] 無法解析，跳過：", line); return; }
       const variantRaw = m[1].trim();
       const qty = Number(m[2]) || 1;
-      // 嘗試拆分最後一個空格前為型號、後為顏色；若無空格則全部當 variant
       const spIdx = variantRaw.lastIndexOf(" ");
       const itemVariant = spIdx>0 ? variantRaw.slice(0,spIdx).trim() : variantRaw;
       const noteColor   = spIdx>0 ? variantRaw.slice(spIdx+1).trim()  : "";
+      // 從 catalog 反查 brand / series，確保 useStock 能正確匹配
+      const bs = findBrandSeries(parsedCats, itemCat, itemVariant);
+      const resolvedBrand  = form.itemBrand  || bs.itemBrand;
+      const resolvedSeries = form.itemSeries || bs.itemSeries;
       recs.push({
         id: uid(),
         date: form.date,
@@ -1703,8 +1719,8 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
         vendorName,
         itemCat,
         itemName: itemCat,
-        itemBrand: form.itemBrand,
-        itemSeries: form.itemSeries,
+        itemBrand:  resolvedBrand,
+        itemSeries: resolvedSeries,
         itemVariant,
         qty,
         amount: Number(form.amount),
@@ -1712,10 +1728,18 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
       });
     });
     if(!recs.length){ console.log("[批次進貨] 沒有成功解析的行"); return; }
-    const next = [...purchases, ...recs];
-    setPurchases(next); save(SK.purchases, next);
+    // 加入暫存清單，不直接寫入 purchases
+    setBatchPending(p=>[...p,...recs]);
     setBatchText("");
-    console.log(`[批次進貨] 已新增 ${recs.length} 筆`);
+    console.log(`[批次進貨] 已暫存 ${recs.length} 筆，請確認後送出`);
+  }
+
+  function confirmBatch(){
+    if(!batchPending.length) return;
+    const next = [...purchases, ...batchPending];
+    setPurchases(next); save(SK.purchases, next);
+    setBatchPending([]);
+    console.log(`[批次進貨] 正式寫入 ${batchPending.length} 筆`);
   }
   function saveEdit(){
     if(!editForm?.amount)return;
@@ -1843,7 +1867,33 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
               rows={6}
               style={{width:"100%",background:"rgba(0,20,60,0.6)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"10px 12px",fontSize:13,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}
             />
-            <Btn onClick={submitBatch} style={{marginTop:6,width:"100%"}}>📋 批次新增進貨</Btn>
+            <Btn onClick={submitBatch} style={{marginTop:6,width:"100%"}}>📋 解析並加入待審清單</Btn>
+
+            {/* 批次待審清單 */}
+            {batchPending.length>0&&(
+              <div style={{marginTop:12,background:"rgba(0,40,100,0.3)",borderRadius:10,padding:"10px 12px",border:`1px solid ${C.borderHi}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <span style={{color:C.accent,fontWeight:800,fontSize:13}}>🔍 待確認清單（{batchPending.length} 筆）</span>
+                  <Btn v="ghost" sm onClick={()=>setBatchPending([])}>全部清除</Btn>
+                </div>
+                {batchPending.map((x,i)=>(
+                  <div key={x.id} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"7px 0",borderBottom:i<batchPending.length-1?`1px solid ${C.border}`:"none",gap:8}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{color:C.text,fontSize:13,fontWeight:600}}>{x.itemCat} {x.itemVariant}</div>
+                      <div style={{color:C.textDim,fontSize:11,marginTop:2}}>
+                        {x.date}　{x.vendorName||"無廠商"}　x{x.qty}　{fmt(x.amount)}
+                        {x.note&&<span>　{x.note}</span>}
+                      </div>
+                    </div>
+                    <button onClick={()=>setBatchPending(p=>p.filter(r=>r.id!==x.id))}
+                      style={{background:"rgba(255,50,80,0.15)",border:"none",borderRadius:6,color:"#ff3d5a",cursor:"pointer",fontSize:12,fontWeight:700,padding:"3px 8px",fontFamily:"inherit",flexShrink:0}}>✕</button>
+                  </div>
+                ))}
+                <Btn onClick={confirmBatch} style={{marginTop:10,width:"100%",background:`linear-gradient(135deg,${C.green},#00a060)`}}>
+                  ✅ 確認送出全部進貨（{batchPending.length} 筆）
+                </Btn>
+              </div>
+            )}
           </div>
         ) : (
           <Btn onClick={addToCart}>＋ 加入清單</Btn>
