@@ -1496,6 +1496,7 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
   function saveOrder(o){
     const next=edit?orders.map(x=>x.id===o.id?o:x):[...orders,o];
     setOrders(next);save(SK.orders,next);setView("list");setEdit(null);
+    window.scrollTo({top:0,behavior:"smooth"});
   }
   function del(id){if(!confirm("確定刪除？"))return;const next=orders.filter(o=>o.id!==id);setOrders(next);save(SK.orders,next);}
 
