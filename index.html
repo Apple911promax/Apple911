@@ -2156,6 +2156,189 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
   const [adjForm,setAdjForm]     = useState({qty:"",reason:"盤點補正",note:"",date:today(),affectCost:false,affectExpense:false,unitCost:""});
   const [showAdjLog,setShowAdjLog] = useState(false);
 
+  // ── 庫存盤點模式 state ────────────────────────────────────────────────────
+  const [stocktakeMode,setStocktakeMode] = useState(false);
+  // { [stockId]: actualQty(string) }
+  const [stocktakeQty,setStocktakeQty] = useState({});
+
+  function applyStocktake(){
+    const entries = Object.entries(stocktakeQty).filter(([,v])=>v!==""&&!isNaN(Number(v)));
+    if(!entries.length){alert("請先輸入至少一項實際庫存數量");return;}
+    if(!confirm(`確定套用盤點結果？將更新 ${entries.length} 項庫存並新增調整紀錄。`))return;
+    const date=today();
+    const newRecs=[];
+    entries.forEach(([skId,actualStr])=>{
+      const actual=Number(actualStr);
+      // 取得目前顯示庫存（含舊調整）
+      const sk=stock[skId];
+      if(!sk)return;
+      const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId).reduce((s,a)=>s+a.qty,0);
+      const currentQty=sk.stock+adjOffset;
+      const diff=actual-currentQty;
+      if(diff===0)return;
+      // 單位成本：用最近一筆進貨的 amount/qty
+      const relPur=(purchases||[]).filter(p=>
+        getStockId(catalog,p.itemCat,p.itemBrand,p.itemVariant)===skId
+      ).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+      const unitCost=relPur.length>0?Math.round((relPur[0].amount||0)/(relPur[0].qty||1)):0;
+      const costImpact=diff*unitCost;
+      newRecs.push({
+        id:uid(), stockId:skId,
+        name:`${sk.cat} ${sk.brand} ${sk.model}`,
+        cat:sk.cat, brand:sk.brand, model:sk.model,
+        qty:diff, reason:"盤點補正",
+        note:"盤點修正",
+        date, affectCost:false, affectExpense:false,
+        costImpact, createdAt:Date.now(),
+      });
+    });
+    if(!newRecs.length){alert("所有項目差異均為 0，無需調整");return;}
+    const nextAdj=[...newRecs,...(stockAdj||[])];
+    setStockAdj(nextAdj);
+    setStocktakeQty({});
+    setStocktakeMode(false);
+    alert(`✅ 盤點完成！已新增 ${newRecs.length} 筆調整紀錄`);
+  }
+
+  // ── 自動修正差異 state ────────────────────────────────────────────────────
+  const [autoCorrectPreview,setAutoCorrectPreview] = useState(null);
+  // autoCorrectPreview = { pairs:[{from,to,qty,costDiff,fromName,toName,fromCost,toCost}], unmatched:[{skId,diff,name}] } | null
+
+  // 取得某 stockId 的單位成本（最近一筆進貨）
+  function getUnitCostForStock(skId){
+    const relPur=(purchases||[]).filter(p=>
+      getStockId(catalog,p.itemCat,p.itemBrand,p.itemVariant)===skId
+    ).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+    return relPur.length>0?Math.round((relPur[0].amount||0)/(relPur[0].qty||1)):0;
+  }
+
+  // 配對演算法：
+  // 1. 只允許相同 cat（品類）的配對
+  // 2. 相同 brand 優先（加權排序）
+  // 3. diff 正負絕對值相等才能配對
+  // 4. 貪心配對：每次取負數堆最大值，找最優正數配對
+  function buildAutoCorrectPairs(){
+    // 先算每個有輸入的 stockId 的 diff
+    const diffs=[];
+    Object.entries(stocktakeQty).forEach(([skId,v])=>{
+      if(v===""||isNaN(Number(v)))return;
+      const sk=stock[skId];
+      if(!sk)return;
+      const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId).reduce((s,a)=>s+a.qty,0);
+      const currentQty=sk.stock+adjOffset;
+      const diff=Number(v)-currentQty;
+      if(diff===0)return;
+      diffs.push({skId,diff,cat:sk.cat,brand:sk.brand,model:sk.model,name:`${sk.cat} ${sk.brand} ${sk.model}`});
+    });
+
+    // 分成正負兩組，按 cat 分群
+    const negatives=[...diffs.filter(d=>d.diff<0)];
+    const positives=[...diffs.filter(d=>d.diff>0)];
+
+    const pairs=[];
+    const usedNeg=new Set();
+    const usedPos=new Set();
+
+    // 按同 cat → 同 brand 優先配對
+    // 先嘗試「完全相同 cat+brand」，再嘗試「只相同 cat」
+    function tryMatch(neg,pos,strictBrand){
+      for(let ni=0;ni<negatives.length;ni++){
+        if(usedNeg.has(ni))continue;
+        const n=negatives[ni];
+        const need=Math.abs(n.diff);
+        for(let pi=0;pi<positives.length;pi++){
+          if(usedPos.has(pi))continue;
+          const p=positives[pi];
+          if(p.cat!==n.cat)continue;
+          if(strictBrand&&p.brand!==n.brand)continue;
+          if(Math.abs(p.diff)!==need)continue;
+          // 配對成功
+          const fromCost=getUnitCostForStock(n.skId);
+          const toCost=getUnitCostForStock(p.skId);
+          const qty=need;
+          const costDiff=(toCost-fromCost)*qty;
+          pairs.push({
+            from:n.skId,to:p.skId,qty,
+            fromName:n.name,toName:p.name,
+            fromCost,toCost,costDiff,
+            cat:n.cat,
+          });
+          usedNeg.add(ni);
+          usedPos.add(pi);
+          break;
+        }
+      }
+    }
+
+    // 第一輪：同 cat + 同 brand
+    tryMatch(negatives,positives,true);
+    // 第二輪：同 cat（不限 brand）
+    tryMatch(negatives,positives,false);
+
+    // 未配對
+    const unmatched=diffs.filter((_,i)=>{
+      const negIdx=negatives.indexOf(diffs.filter(d=>d.diff<0)[negatives.indexOf(diffs.filter(d=>d.diff<0).find(x=>x===_))]);
+      return true;
+    }).filter(d=>{
+      const ni=negatives.findIndex(x=>x.skId===d.skId);
+      const pi=positives.findIndex(x=>x.skId===d.skId);
+      if(d.diff<0)return !usedNeg.has(ni<0?999:ni);
+      if(d.diff>0)return !usedPos.has(pi<0?999:pi);
+      return false;
+    });
+
+    return{pairs,unmatched};
+  }
+
+  function openAutoCorrect(){
+    const result=buildAutoCorrectPairs();
+    if(!result.pairs.length&&!result.unmatched.length){
+      alert("沒有可配對的差異，請先輸入實際庫存數量");return;
+    }
+    setAutoCorrectPreview(result);
+  }
+
+  function confirmAutoCorrect(){
+    if(!autoCorrectPreview||!autoCorrectPreview.pairs.length){
+      setAutoCorrectPreview(null);return;
+    }
+    const date=today();
+    const newAdj=[];
+    autoCorrectPreview.pairs.forEach(pair=>{
+      const base={date,affectCost:false,affectExpense:false,createdAt:Date.now(),reason:"品項更正"};
+      newAdj.push({
+        ...base, id:uid(), stockId:pair.from, name:pair.fromName, qty:-pair.qty,
+        note:`盤點誤記轉移至「${pair.toName}」`,costImpact:-pair.fromCost*pair.qty,
+      });
+      newAdj.push({
+        ...base, id:uid(), stockId:pair.to, name:pair.toName, qty:+pair.qty,
+        note:`盤點誤記來自「${pair.fromName}」`,costImpact:pair.toCost*pair.qty,
+      });
+    });
+    // 成本調整紀錄（costDiff != 0 的才記）
+    const costAdjs=autoCorrectPreview.pairs
+      .filter(p=>p.costDiff!==0)
+      .map(p=>({
+        id:uid(), date, type:"成本調整",
+        amount:p.costDiff,
+        note:`盤點誤記補正 ${p.fromName}→${p.toName}`,
+        fromStockId:p.from,toStockId:p.to,
+        createdAt:Date.now(),
+      }));
+    const nextAdj=[...newAdj,...(stockAdj||[])];
+    setStockAdj(nextAdj);
+    // 成本調整寫入 SK.costAdj（獨立 key，不影響 stockAdj 結構）
+    if(costAdjs.length){
+      const prevCostAdj=load("costAdj",[]);
+      const nextCostAdj=[...costAdjs,...prevCostAdj];
+      save("costAdj",nextCostAdj);
+    }
+    setStocktakeQty({});
+    setAutoCorrectPreview(null);
+    setStocktakeMode(false);
+    alert(`✅ 自動修正完成！\n轉移 ${autoCorrectPreview.pairs.length} 組${costAdjs.length?`\n成本調整 ${costAdjs.length} 筆`:""}${autoCorrectPreview.unmatched.length?`\n未配對 ${autoCorrectPreview.unmatched.length} 項請手動處理`:""}`);
+  }
+
   const REASONS = ["盤點補正","員工漏記","遺失報廢","補登進貨"];
 
   function openAdj(stockId,cat,brand,model){
@@ -2359,6 +2542,11 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
           background:"rgba(0,40,100,0.3)",
           color:C.textMid,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,
         }}>🔄 品項轉移</button>
+        <button onClick={()=>{setStocktakeMode(m=>!m);setStocktakeQty({});}} style={{
+          padding:"7px 14px",borderRadius:10,border:`1px solid ${stocktakeMode?C.gold:"rgba(255,200,0,0.25)"}`,
+          background:stocktakeMode?"rgba(255,200,0,0.18)":"rgba(0,40,100,0.3)",
+          color:stocktakeMode?C.gold:C.textMid,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,
+        }}>📋 {stocktakeMode?"結束盤點":"盤點模式"}</button>
       </div>
 
       {/* 管理：新增品項 */}
@@ -2437,12 +2625,13 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                                     <span style={{color:C.textMid,fontSize:14,transform:sCol?"rotate(0)":"rotate(180deg)",transition:"transform .2s"}}>⌃</span>
                                   </div>
                                   {!sCol&&(
-                                    <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:3,padding:"6px 8px"}}>
+                                    <div style={{display:"grid",gridTemplateColumns:stocktakeMode?"2fr 1fr 1fr 1fr auto auto":"2fr 1fr 1fr 1fr auto",gap:3,padding:"6px 8px"}}>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,padding:"3px 6px"}}>型號</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>進貨</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>已用</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>庫存</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}></div>
+                                      {stocktakeMode&&<div style={{color:C.gold,fontSize:10,fontWeight:700,textAlign:"center"}}>實際</div>}
                                       {sObj.models.map(m=>{
                                         const sk=stock[catObj.cat+"__"+bObj.brand+"__"+m]||{totalIn:0,totalUsed:0,stock:0};
                                         const skId=getStockId(catalog,catObj.cat,bObj.brand,m);
@@ -2465,6 +2654,34 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                                             <div style={{textAlign:"center",padding:"3px 0"}}>
                                               <button onClick={()=>openAdj(skId,catObj.cat,bObj.brand,m)} style={{padding:"2px 7px",borderRadius:6,border:`1px solid ${C.border}`,background:"rgba(0,100,200,0.18)",color:C.accent,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>調整</button>
                                             </div>
+                                            {stocktakeMode&&(()=>{
+                                              const actVal=stocktakeQty[skId]||"";
+                                              const diff=actVal!==""&&!isNaN(Number(actVal))?Number(actVal)-displayStock:null;
+                                              const relPur=(purchases||[]).filter(p=>getStockId(catalog,p.itemCat,p.itemBrand,p.itemVariant)===skId).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+                                              const unitCost=relPur.length>0?Math.round((relPur[0].amount||0)/(relPur[0].qty||1)):0;
+                                              const costImpact=diff!==null?diff*unitCost:null;
+                                              return(
+                                                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"2px 0"}}>
+                                                  <input
+                                                    type="number"
+                                                    inputMode="numeric"
+                                                    value={actVal}
+                                                    placeholder="實際"
+                                                    onChange={e=>setStocktakeQty(q=>({...q,[skId]:e.target.value}))}
+                                                    style={{width:52,background:"rgba(255,200,0,0.12)",border:`1px solid ${actVal!==""?C.gold:C.border}`,borderRadius:6,color:C.gold,fontSize:11,padding:"3px 5px",textAlign:"center",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}
+                                                  />
+                                                  {diff!==null&&diff!==0&&(
+                                                    <div style={{fontSize:9,fontWeight:800,color:diff>0?C.green:C.red,lineHeight:1.2,textAlign:"center"}}>
+                                                      {diff>0?"+":""}{diff}<br/>
+                                                      <span style={{fontWeight:400,color:costImpact!==null&&costImpact!==0?(costImpact>0?C.green:C.red):C.textDim}}>
+                                                        {costImpact!==null&&unitCost>0?(costImpact>0?"+":"")+costImpact.toLocaleString():""}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                  {diff===0&&actVal!==""&&<div style={{fontSize:9,color:C.textDim}}>無差異</div>}
+                                                </div>
+                                              );
+                                            })()}
                                           </React.Fragment>
                                         );
                                       })}
@@ -2731,6 +2948,108 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
             <div style={{display:"flex",gap:8}}>
               <button onClick={()=>setAdjTarget(null)} style={{flex:1,padding:"10px",borderRadius:10,border:`1px solid ${C.border}`,background:"rgba(0,20,60,0.5)",color:C.textMid,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>取消</button>
               <button onClick={handleAdj} style={{flex:2,padding:"10px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.accent2},${C.accent})`,color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✅ 確認調整</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 盤點模式：套用按鈕 */}
+      {stocktakeMode&&(
+        <Card style={{border:`1.5px solid ${C.gold}`,background:"rgba(255,200,0,0.07)",marginTop:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+            <div>
+              <div style={{color:C.gold,fontWeight:800,fontSize:13}}>📋 盤點模式中</div>
+              <div style={{color:C.textDim,fontSize:11,marginTop:2}}>
+                已輸入 {Object.values(stocktakeQty).filter(v=>v!==""&&!isNaN(Number(v))).length} 項 ·
+                有差異 {Object.entries(stocktakeQty).filter(([skId,v])=>{
+                  if(v===""||isNaN(Number(v)))return false;
+                  const sk=stock[skId];if(!sk)return false;
+                  const adjOff=(stockAdj||[]).filter(a=>a.stockId===skId).reduce((s,a)=>s+a.qty,0);
+                  return Number(v)!==(sk.stock+adjOff);
+                }).length} 項
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button onClick={openAutoCorrect} style={{padding:"9px 16px",borderRadius:10,border:`1px solid ${C.accent}`,background:"rgba(0,100,255,0.18)",color:C.accent,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                🔁 自動修正差異
+              </button>
+              <button onClick={applyStocktake} style={{padding:"9px 20px",borderRadius:10,border:"none",background:`linear-gradient(135deg,#a06000,${C.gold})`,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                ✅ 套用盤點結果
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* 自動修正差異預覽彈窗 */}
+      {autoCorrectPreview&&(
+        <div onClick={()=>setAutoCorrectPreview(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f3c",border:`1.5px solid ${C.borderHi}`,borderRadius:16,padding:20,width:"100%",maxWidth:480,maxHeight:"85vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div>
+                <div style={{color:C.gold,fontWeight:800,fontSize:15}}>🔁 自動修正差異預覽</div>
+                <div style={{color:C.textDim,fontSize:11,marginTop:2}}>確認後才會執行，請仔細核對</div>
+              </div>
+              <button onClick={()=>setAutoCorrectPreview(null)} style={{background:"none",border:"none",color:C.textDim,fontSize:20,cursor:"pointer"}}>✕</button>
+            </div>
+
+            {/* 配對轉移清單 */}
+            {autoCorrectPreview.pairs.length>0&&(
+              <div style={{marginBottom:14}}>
+                <div style={{color:C.accent,fontWeight:700,fontSize:12,marginBottom:8}}>📦 配對轉移（{autoCorrectPreview.pairs.length} 組）</div>
+                {autoCorrectPreview.pairs.map((p,i)=>(
+                  <div key={i} style={{padding:"10px 12px",marginBottom:6,borderRadius:10,border:`1px solid ${C.border}`,background:"rgba(0,20,60,0.4)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                      <span style={{color:C.red,fontSize:12,fontWeight:700}}>{p.fromName}</span>
+                      <span style={{color:C.textDim,fontSize:11}}>→</span>
+                      <span style={{color:C.green,fontSize:12,fontWeight:700}}>{p.toName}</span>
+                      <span style={{color:C.textMid,fontSize:11,marginLeft:4}}>× {p.qty}</span>
+                    </div>
+                    <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:11}}>
+                      <span style={{color:C.textDim}}>來源成本：<span style={{color:C.text,fontWeight:700}}>{p.fromCost>0?fmt(p.fromCost):"未知"}</span></span>
+                      <span style={{color:C.textDim}}>目標成本：<span style={{color:C.text,fontWeight:700}}>{p.toCost>0?fmt(p.toCost):"未知"}</span></span>
+                      {p.costDiff!==0&&(
+                        <span style={{color:p.costDiff>0?C.green:C.red,fontWeight:700}}>
+                          成本差：{p.costDiff>0?"+":""}{fmt(p.costDiff)}
+                        </span>
+                      )}
+                      {p.costDiff===0&&<span style={{color:C.textDim}}>成本差：無</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 未配對差異 */}
+            {autoCorrectPreview.unmatched.length>0&&(
+              <div style={{marginBottom:14,padding:"10px 12px",borderRadius:10,border:`1px solid rgba(255,140,0,0.35)`,background:"rgba(255,140,0,0.07)"}}>
+                <div style={{color:C.orange,fontWeight:700,fontSize:12,marginBottom:6}}>⚠️ 未配對差異（{autoCorrectPreview.unmatched.length} 項，請手動處理）</div>
+                {autoCorrectPreview.unmatched.map((u,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:i<autoCorrectPreview.unmatched.length-1?`1px solid ${C.border}`:"none",fontSize:11}}>
+                    <span style={{color:C.textMid}}>{u.name}</span>
+                    <span style={{color:u.diff>0?C.green:C.red,fontWeight:700}}>{u.diff>0?"+":""}{u.diff}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 無配對結果 */}
+            {autoCorrectPreview.pairs.length===0&&(
+              <div style={{color:C.textDim,textAlign:"center",padding:"16px 0",fontSize:13}}>
+                找不到可配對的差異<br/>
+                <span style={{fontSize:11}}>（需要同品類且差異正負相等才能自動配對）</span>
+              </div>
+            )}
+
+            <div style={{padding:"8px 12px",background:"rgba(255,200,0,0.07)",border:`1px solid rgba(255,200,0,0.2)`,borderRadius:8,fontSize:11,color:C.gold,marginBottom:14}}>
+              ⚠️ 庫存轉移不影響工單收入或進貨成本。成本調整差額會記錄於系統日誌供參考。
+            </div>
+
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setAutoCorrectPreview(null)} style={{flex:1,padding:"10px",borderRadius:10,border:`1px solid ${C.border}`,background:"rgba(0,20,60,0.5)",color:C.textMid,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>取消</button>
+              {autoCorrectPreview.pairs.length>0&&(
+                <button onClick={confirmAutoCorrect} style={{flex:2,padding:"10px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.accent2},${C.accent})`,color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>🔁 確認執行修正</button>
+              )}
             </div>
           </div>
         </div>
