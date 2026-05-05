@@ -2148,7 +2148,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
 }
 
 // ─── INVENTORY PAGE ───────────────────────────────────────────────────────────
-function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses,setExpenses,stockAdj,setStockAdj,orders,onJumpToOrder}) {
+function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses,setExpenses,stockAdj,setStockAdj,orders,setOrders,onJumpToOrder}) {
   window.__vendorList__ = catalog.vendors||DEF.vendors;
   const [filterCat,setFilterCat]     = useState("全部");
   const [stockModal,setStockModal]   = useState(null); // {cat,brand,model}
@@ -2159,9 +2159,13 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
 
   // ── 庫存調整 state ────────────────────────────────────────────────────────
   const [adjTarget,setAdjTarget] = useState(null); // {stockId,cat,brand,model}
-  const [adjForm,setAdjForm]     = useState({qty:"",reason:"盤點補正",note:"",date:today(),affectCost:false,affectExpense:false,unitCost:""});
+  const [adjForm,setAdjForm]     = useState({qty:"",reason:"盤點補正",note:"",date:today(),affectCost:false,affectExpense:false,unitCost:"",salePrice:""});
   const [showAdjLog,setShowAdjLog] = useState(false);
   const [usageModal,setUsageModal] = useState(null);
+  const [diffTableModal,setDiffTableModal] = useState(false);
+  const [diffAnalysisModal,setDiffAnalysisModal] = useState(null);
+  const [diffTableQty,setDiffTableQty] = useState({});
+  const [diffTableCol,setDiffTableCol] = useState({});
 
   // ── 庫存盤點模式 state ────────────────────────────────────────────────────
   const [stocktakeMode,setStocktakeMode] = useState(false);
@@ -2297,6 +2301,93 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
     return{pairs,unmatched};
   }
 
+  function buildStocktakeIdMap(){
+    const map={};
+    (catalog.purchaseCategories||[]).forEach(cObj=>{
+      (cObj.brands||[]).forEach(bObj=>{
+        (bObj.series||[]).forEach(sObj=>{
+          const ids=sObj.stockIds||{};
+          (sObj.models||[]).forEach(m=>{
+            const sid=ids[m]||(cObj.cat+"__"+bObj.brand+"__"+m);
+            if(!map[sid])map[sid]=[];
+            if(!map[sid].includes(m))map[sid].push(m);
+          });
+        });
+      });
+    });
+    return map;
+  }
+
+  function analyzeStocktakeDiff(skId,cat,brand,model){
+    const sidMap=buildStocktakeIdMap();
+    const sameGroup=new Set(sidMap[skId]||[model]);
+    const now=new Date();
+    const suspects=[];
+    const relOrders=(orders||[]).filter(o=>(o.items||[]).some(i=>i.stockId===skId));
+    // 相近 stockId（同 cat 同 brand，不同 stockId，不在同群組）
+    const relSkIds=new Set();
+    (catalog.purchaseCategories||[]).find(c=>c.cat===cat)
+      ?.brands?.find(b=>b.brand===brand)
+      ?.series?.forEach(s=>(s.models||[]).forEach(m2=>{
+        const sid2=((s.stockIds||{})[m2])||(cat+"__"+brand+"__"+m2);
+        if(sid2!==skId&&!sameGroup.has(m2))relSkIds.add(sid2);
+      }));
+    // 1. 疑似型號選錯
+    (orders||[]).filter(o=>(o.items||[]).some(i=>relSkIds.has(i.stockId))).forEach(o=>{
+      const daysDiff=(now-new Date(o.date||""))/(86400000);
+      const score=daysDiff<=30?80:55;
+      (o.items||[]).filter(i=>relSkIds.has(i.stockId)).forEach(i=>{
+        suspects.push({orderId:o.id,date:o.date||"",customer:o.customerName||o.customer||"",itemName:i.name||"",model:i.stockModel||i.name||"",qty:Number(i.qty)||1,reason:"疑似型號選錯",score,recent:daysDiff<=30});
+      });
+    });
+    // 2. 同天同客人重複扣
+    const dayMap={};
+    relOrders.forEach(o=>{
+      const key=(o.date||"")+"__"+(o.customerName||o.customer||"anon");
+      if(!dayMap[key])dayMap[key]=[];dayMap[key].push(o);
+    });
+    Object.values(dayMap).filter(arr=>arr.length>1).forEach(arr=>{
+      arr.forEach(o=>{
+        const daysDiff=(now-new Date(o.date||""))/(86400000);
+        const score=daysDiff<=30?90:65;
+        (o.items||[]).filter(i=>i.stockId===skId).forEach(i=>{
+          suspects.push({orderId:o.id,date:o.date||"",customer:o.customerName||o.customer||"",itemName:i.name||"",model:i.stockModel||i.name||"",qty:Number(i.qty)||1,reason:"疑似重複輸入（同天同客人）",score,recent:daysDiff<=30});
+        });
+      });
+    });
+    // 3. 單筆數量 > 1
+    relOrders.forEach(o=>{
+      (o.items||[]).filter(i=>i.stockId===skId&&(Number(i.qty)||1)>1).forEach(i=>{
+        const daysDiff=(now-new Date(o.date||""))/(86400000);
+        const score=daysDiff<=30?70:45;
+        if(!suspects.find(s=>s.orderId===o.id&&s.reason.includes("數量")))
+          suspects.push({orderId:o.id,date:o.date||"",customer:o.customerName||o.customer||"",itemName:i.name||"",model:i.stockModel||i.name||"",qty:Number(i.qty)||1,reason:"疑似數量輸入錯（>1）",score,recent:daysDiff<=30});
+      });
+    });
+    // 4. 品項名稱相近但不同 stockId
+    const baseName=(model||"").replace(/\s/g,"");
+    if(baseName.length>=4){
+      (orders||[]).forEach(o=>{
+        (o.items||[]).filter(i=>i.stockId!==skId&&!sameGroup.has(i.stockModel||"")&&(i.name||"").replace(/\s/g,"").includes(baseName.slice(0,4))).forEach(i=>{
+          const daysDiff=(now-new Date(o.date||""))/(86400000);
+          if(daysDiff>60)return;
+          if(!suspects.find(s=>s.orderId===o.id&&s.reason.includes("名稱相近")))
+            suspects.push({orderId:o.id,date:o.date||"",customer:o.customerName||o.customer||"",itemName:i.name||"",model:i.stockModel||i.name||"",qty:Number(i.qty)||1,reason:"疑似品項名稱相近但型號不同",score:60,recent:daysDiff<=30});
+        });
+      });
+    }
+    const seen=new Set();
+    return suspects
+      .filter(s=>{const k=s.orderId+s.reason;if(seen.has(k))return false;seen.add(k);return true;})
+      .sort((a,b)=>b.score-a.score||b.date.localeCompare(a.date));
+  }
+
+  function openDiffAnalysis(skId,cat,brand,model,systemQty,actualQty){
+    const diff=actualQty-systemQty;
+    const suspects=analyzeStocktakeDiff(skId,cat,brand,model);
+    setDiffAnalysisModal({skId,cat,brand,model,systemQty,actualQty,diff,suspects});
+  }
+
   function openAutoCorrect(){
     const result=buildAutoCorrectPairs();
     if(!result.pairs.length&&!result.unmatched.length){
@@ -2349,8 +2440,12 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
   const REASONS = ["盤點補正","員工漏記","遺失報廢","補登進貨"];
 
   function openAdj(stockId,cat,brand,model){
+    const relPur=(purchases||[])
+      .filter(p=>getStockId(catalog,p.itemCat,p.itemBrand,p.itemVariant)===stockId)
+      .sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+    const autoUnitCost=relPur.length>0?String(Math.round((relPur[0].amount||0)/(relPur[0].qty||1))):"";
     setAdjTarget({stockId,cat,brand,model});
-    setAdjForm({qty:"",reason:"盤點補正",note:"",date:today(),affectCost:false,affectExpense:false,unitCost:""});
+    setAdjForm({qty:"",reason:"盤點補正",note:"",date:today(),affectCost:false,affectExpense:false,unitCost:autoUnitCost,salePrice:""});
   }
 
   function getUsageHistory(skId){
@@ -2395,6 +2490,27 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
       const newItem={id:uid(),name:`庫存損耗：${adjTarget.cat} ${adjTarget.model}`,amount:lossAmt,note:adjForm.note||""};
       const nextExp={...expenses,[mk]:{...cur,items:[...(cur.items||[]),newItem]}};
       setExpenses(nextExp);
+    }
+    // 負數 + 有售價 → 建立盤點售出工單
+    if(qty<0&&adjForm.salePrice&&Number(adjForm.salePrice)>0){
+      const absQty=Math.abs(qty);
+      const sp=Number(adjForm.salePrice);
+      const uc=Number(adjForm.unitCost)||0;
+      const saleOrder={
+        id:uid(), date:adjForm.date,
+        brand:adjTarget.brand, brandName:adjTarget.brand,
+        model:adjTarget.stockId, modelName:adjTarget.model, modelFree:"",
+        customer:"(盤點售出)",
+        note:adjForm.note||`盤點售出：${adjTarget.cat} ${adjTarget.model}`,
+        payments:["現金"], vendors:[],
+        items:[{id:uid(),name:`${adjTarget.cat} ${adjTarget.model}`,cat:adjTarget.cat,stockItem:adjTarget.cat,stockId:adjTarget.stockId,cost:uc,qty:absQty,autoPrice:false}],
+        photos:[],
+        totalRevenue:sp*absQty, totalCost:uc*absQty, profit:(sp-uc)*absQty,
+        linePayFee:0, linePayTax:0, linePayTotal:0,
+        createdAt:Date.now(), _isStocktakeSale:true,
+      };
+      const nextOrders=[saleOrder,...(orders||[])];
+      setOrders&&setOrders(nextOrders);
     }
     setAdjTarget(null);
     alert(`✅ 已記錄庫存調整：${qty>0?"+":""}${qty} 件\n原因：${adjForm.reason}`);
@@ -2562,6 +2678,11 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
           background:stocktakeMode?"rgba(255,200,0,0.18)":"rgba(0,40,100,0.3)",
           color:stocktakeMode?C.gold:C.textMid,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,
         }}>📋 {stocktakeMode?"結束盤點":"盤點模式"}</button>
+        <button onClick={()=>{setDiffTableModal(true);setDiffTableQty({});}} style={{
+          padding:"7px 14px",borderRadius:10,border:`1px solid rgba(0,200,100,0.3)`,
+          background:"rgba(0,100,60,0.25)",
+          color:C.green,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,
+        }}>📊 差異表</button>
       </div>
 
       {/* 管理：新增品項 */}
@@ -2640,14 +2761,13 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                                     <span style={{color:C.textMid,fontSize:14,transform:sCol?"rotate(0)":"rotate(180deg)",transition:"transform .2s"}}>⌃</span>
                                   </div>
                                   {!sCol&&(
-                                    <div style={{display:"grid",gridTemplateColumns:stocktakeMode?"2fr 1fr 1fr 1fr auto auto auto":"2fr 1fr 1fr 1fr auto auto",gap:3,padding:"6px 8px"}}>
+                                    <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto auto",gap:3,padding:"6px 8px"}}>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,padding:"3px 6px"}}>型號</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>進貨</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>已用</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>庫存</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}></div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center",minWidth:60}}>使用時間</div>
-                                      {stocktakeMode&&<div style={{color:C.gold,fontSize:10,fontWeight:700,textAlign:"center"}}>實際</div>}
                                       {sObj.models.map(m=>{
                                         const sk=stock[catObj.cat+"__"+bObj.brand+"__"+m]||{totalIn:0,totalUsed:0,stock:0};
                                         const skId=getStockId(catalog,catObj.cat,bObj.brand,m);
@@ -2701,34 +2821,6 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                                                       style={{padding:"1px 6px",borderRadius:4,border:`1px solid ${C.border}`,background:"rgba(0,60,150,0.2)",color:C.textDim,fontSize:9,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
                                                     >查看</button>
                                                   )}
-                                                </div>
-                                              );
-                                            })()}
-                                            {stocktakeMode&&(()=>{
-                                              const actVal=stocktakeQty[skId]||"";
-                                              const diff=actVal!==""&&!isNaN(Number(actVal))?Number(actVal)-displayStock:null;
-                                              const relPur=(purchases||[]).filter(p=>getStockId(catalog,p.itemCat,p.itemBrand,p.itemVariant)===skId).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-                                              const unitCost=relPur.length>0?Math.round((relPur[0].amount||0)/(relPur[0].qty||1)):0;
-                                              const costImpact=diff!==null?diff*unitCost:null;
-                                              return(
-                                                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"2px 0"}}>
-                                                  <input
-                                                    type="number"
-                                                    inputMode="numeric"
-                                                    value={actVal}
-                                                    placeholder="實際"
-                                                    onChange={e=>setStocktakeQty(q=>({...q,[skId]:e.target.value}))}
-                                                    style={{width:52,background:"rgba(255,200,0,0.12)",border:`1px solid ${actVal!==""?C.gold:C.border}`,borderRadius:6,color:C.gold,fontSize:11,padding:"3px 5px",textAlign:"center",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}
-                                                  />
-                                                  {diff!==null&&diff!==0&&(
-                                                    <div style={{fontSize:9,fontWeight:800,color:diff>0?C.green:C.red,lineHeight:1.2,textAlign:"center"}}>
-                                                      {diff>0?"+":""}{diff}<br/>
-                                                      <span style={{fontWeight:400,color:costImpact!==null&&costImpact!==0?(costImpact>0?C.green:C.red):C.textDim}}>
-                                                        {costImpact!==null&&unitCost>0?(costImpact>0?"+":"")+costImpact.toLocaleString():""}
-                                                      </span>
-                                                    </div>
-                                                  )}
-                                                  {diff===0&&actVal!==""&&<div style={{fontSize:9,color:C.textDim}}>無差異</div>}
                                                 </div>
                                               );
                                             })()}
@@ -2914,6 +3006,189 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
         </div>
       )}
 
+      {/* 盤點差異表 modal */}
+      {diffTableModal&&(()=>{
+        function togDt(k){setDiffTableCol(p=>({...p,[k]:!p[k]}));}
+        function skDiff(skId){
+          const sk=stock[skId]||{stock:0};
+          const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId).reduce((s,a)=>s+a.qty,0);
+          const sysQty=sk.stock+adjOffset;
+          const actVal=diffTableQty[skId]||"";
+          if(actVal===""||isNaN(Number(actVal)))return null;
+          return Number(actVal)-sysQty;
+        }
+        function catDiffCount(cObj){return(cObj.brands||[]).reduce((s,bObj)=>(bObj.series||[]).reduce((s2,sObj)=>{const seen=new Set();return s2+(sObj.models||[]).filter(m=>{const sid=getStockId(catalog,cObj.cat,bObj.brand,m);if(seen.has(sid))return false;seen.add(sid);const d=skDiff(sid);return d!==null&&d!==0;}).length;},s),0);}
+        function brandDiffCount(cObj,bObj){return(bObj.series||[]).reduce((s,sObj)=>{const seen=new Set();return s+(sObj.models||[]).filter(m=>{const sid=getStockId(catalog,cObj.cat,bObj.brand,m);if(seen.has(sid))return false;seen.add(sid);const d=skDiff(sid);return d!==null&&d!==0;}).length;},0);}
+        function seriesDiffCount(cObj,bObj,sObj){const seen=new Set();return(sObj.models||[]).filter(m=>{const sid=getStockId(catalog,cObj.cat,bObj.brand,m);if(seen.has(sid))return false;seen.add(sid);const d=skDiff(sid);return d!==null&&d!==0;}).length;}
+        const cats2=catalog.purchaseCategories||[];
+        const totalDiff=cats2.reduce((s,c)=>s+catDiffCount(c),0);
+        const sortedCats=[...cats2].sort((a,b)=>catDiffCount(b)-catDiffCount(a));
+        return(
+          <div onClick={()=>setDiffTableModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:9998,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:16,overflowY:"auto"}}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f3c",border:`1.5px solid ${C.borderHi}`,borderRadius:16,padding:20,width:"100%",maxWidth:640,marginTop:16,marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div>
+                  <div style={{color:C.green,fontWeight:800,fontSize:15}}>📊 庫存盤點差異表</div>
+                  <div style={{color:C.textDim,fontSize:11,marginTop:2}}>點品項展開，輸入實際數量後系統自動分析差異</div>
+                </div>
+                <button onClick={()=>setDiffTableModal(false)} style={{background:"none",border:"none",color:C.textDim,fontSize:20,cursor:"pointer"}}>✕</button>
+              </div>
+              {totalDiff>0&&(
+                <div style={{padding:"8px 12px",background:"rgba(255,60,90,0.1)",border:`1px solid rgba(255,60,90,0.3)`,borderRadius:8,marginBottom:12,fontSize:11,color:C.red}}>
+                  ⚠️ 發現 {totalDiff} 項差異，請逐一確認
+                </div>
+              )}
+              <div style={{maxHeight:"72vh",overflowY:"auto"}}>
+                {sortedCats.map((cObj)=>{
+                  const ck="dtc_"+cObj.cat;
+                  const cOpen=!!diffTableCol[ck];
+                  const cDiff=catDiffCount(cObj);
+                  const sortedBrands=[...(cObj.brands||[])].sort((a,b)=>brandDiffCount(cObj,b)-brandDiffCount(cObj,a));
+                  return(
+                    <div key={cObj.cat} style={{marginBottom:6,background:"rgba(0,30,80,0.35)",borderRadius:11,overflow:"hidden"}}>
+                      <div onClick={()=>togDt(ck)} style={{display:"flex",alignItems:"center",padding:"10px 14px",background:"rgba(0,50,120,0.5)",gap:8,cursor:"pointer"}}>
+                        <span style={{color:C.gold,fontWeight:800,fontSize:13,flex:1}}>
+                          {cObj.cat}
+                          {cDiff>0&&<span style={{color:C.red,fontSize:11,fontWeight:700,marginLeft:8}}>（差異 {cDiff}）</span>}
+                        </span>
+                        <span style={{color:C.gold,fontSize:15,transform:cOpen?"rotate(180deg)":"rotate(0)",transition:"transform .2s"}}>⌃</span>
+                      </div>
+                      {cOpen&&sortedBrands.map((bObj,bi)=>{
+                        const bk="dtb_"+cObj.cat+"_"+bi;
+                        const bOpen=!!diffTableCol[bk];
+                        const bDiff=brandDiffCount(cObj,bObj);
+                        const sortedSeries=[...(bObj.series||[])].sort((a,b)=>seriesDiffCount(cObj,bObj,b)-seriesDiffCount(cObj,bObj,a));
+                        return(
+                          <div key={bi} style={{margin:"6px 10px",background:"rgba(0,20,60,0.4)",borderRadius:9,overflow:"hidden"}}>
+                            <div onClick={()=>togDt(bk)} style={{display:"flex",alignItems:"center",padding:"8px 12px",background:"rgba(0,40,100,0.45)",gap:8,cursor:"pointer"}}>
+                              <span style={{color:C.accent,fontWeight:700,fontSize:12,flex:1}}>
+                                📱 {bObj.brand}
+                                {bDiff>0&&<span style={{color:C.red,fontSize:10,fontWeight:700,marginLeft:6}}>（差異 {bDiff}）</span>}
+                              </span>
+                              <span style={{color:C.accent,fontSize:14,transform:bOpen?"rotate(180deg)":"rotate(0)",transition:"transform .2s"}}>⌃</span>
+                            </div>
+                            {bOpen&&sortedSeries.map((sObj,si)=>{
+                              const sk2="dts_"+cObj.cat+"_"+bi+"_"+si;
+                              const sOpen=!!diffTableCol[sk2];
+                              const sDiff=seriesDiffCount(cObj,bObj,sObj);
+                              const seenSids=new Set();
+                              const modelRows=(sObj.models||[]).reduce((arr,m)=>{
+                                const skId=getStockId(catalog,cObj.cat,bObj.brand,m);
+                                if(seenSids.has(skId))return arr;
+                                seenSids.add(skId);
+                                const sharedInSeries=(sObj.models||[]).filter(m2=>getStockId(catalog,cObj.cat,bObj.brand,m2)===skId);
+                                const label=sharedInSeries.length>1?sharedInSeries.join(" / ")+" （通用）":m;
+                                const sk=stock[skId]||{stock:0};
+                                const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId).reduce((s,a)=>s+a.qty,0);
+                                const sysQty=sk.stock+adjOffset;
+                                const actVal=diffTableQty[skId]||"";
+                                const diff=actVal!==""&&!isNaN(Number(actVal))?Number(actVal)-sysQty:null;
+                                arr.push({skId,label,sysQty,actVal,diff,cat:cObj.cat,brand:bObj.brand,model:m});
+                                return arr;
+                              },[]).sort((a,b)=>(b.diff!==null&&b.diff!==0?1:0)-(a.diff!==null&&a.diff!==0?1:0));
+                              return(
+                                <div key={si} style={{margin:"5px 8px",background:"rgba(0,15,50,0.35)",borderRadius:8,overflow:"hidden",marginBottom:6}}>
+                                  <div onClick={()=>togDt(sk2)} style={{display:"flex",alignItems:"center",padding:"7px 10px",background:"rgba(0,30,80,0.4)",gap:6,cursor:"pointer"}}>
+                                    <span style={{color:C.textMid,fontSize:11,flex:1}}>
+                                      ▸ {sObj.name}
+                                      {sDiff>0&&<span style={{color:C.red,fontSize:10,marginLeft:6}}>（差異 {sDiff}）</span>}
+                                    </span>
+                                    <span style={{color:C.textDim,fontSize:11}}>{modelRows.length} 項</span>
+                                    <span style={{color:C.textMid,fontSize:13,transform:sOpen?"rotate(180deg)":"rotate(0)",transition:"transform .2s"}}>⌃</span>
+                                  </div>
+                                  {sOpen&&(
+                                    <div style={{padding:"6px 8px"}}>
+                                      <div style={{display:"grid",gridTemplateColumns:"2fr 50px 62px 50px 50px",gap:4,padding:"4px 6px",borderBottom:`1px solid ${C.border}`,marginBottom:3}}>
+                                        {["型號","系統","實際","差異","分析"].map((h,i)=>(
+                                          <div key={i} style={{color:C.textDim,fontSize:9,fontWeight:700,textAlign:i>0?"center":"left"}}>{h}</div>
+                                        ))}
+                                      </div>
+                                      {modelRows.map((r,ri)=>(
+                                        <div key={r.skId+ri} style={{display:"grid",gridTemplateColumns:"2fr 50px 62px 50px 50px",gap:4,padding:"4px 6px",borderBottom:`1px solid ${C.border}`,alignItems:"center",background:r.diff!==null&&r.diff!==0?"rgba(255,60,90,0.06)":"transparent"}}>
+                                          <div style={{color:C.text,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.label}>{r.label}</div>
+                                          <div style={{color:C.text,fontSize:11,textAlign:"center",fontWeight:700}}>{r.sysQty}</div>
+                                          <input type="number" inputMode="numeric" value={r.actVal} placeholder="—"
+                                            onChange={e=>setDiffTableQty(q=>({...q,[r.skId]:e.target.value}))}
+                                            style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.5)",border:`1px solid ${r.actVal!==""?C.gold:C.border}`,borderRadius:5,color:C.gold,fontSize:11,padding:"2px 4px",textAlign:"center",outline:"none",fontFamily:"inherit"}}/>
+                                          <div style={{textAlign:"center",fontWeight:800,fontSize:11,color:r.diff===null?"transparent":r.diff>0?C.green:r.diff<0?C.red:C.textDim}}>
+                                            {r.diff===null?"":r.diff>0?"+"+r.diff:r.diff===0?"✓":r.diff}
+                                          </div>
+                                          <div style={{textAlign:"center"}}>
+                                            {r.diff!==null&&r.diff!==0
+                                              ?<button onClick={()=>openDiffAnalysis(r.skId,r.cat,r.brand,r.model,r.sysQty,Number(r.actVal))}
+                                                  style={{padding:"1px 5px",borderRadius:4,border:`1px solid ${C.orange}`,background:"rgba(255,140,0,0.15)",color:C.orange,fontSize:9,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>分析</button>
+                                              :<span style={{color:C.textDim,fontSize:9}}>—</span>}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 差異分析結果 modal */}
+      {diffAnalysisModal&&(
+        <div onClick={()=>setDiffAnalysisModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f3c",border:`1.5px solid ${C.borderHi}`,borderRadius:16,padding:20,width:"90%",maxWidth:520,maxHeight:"82vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+              <div>
+                <div style={{color:C.orange,fontWeight:800,fontSize:15}}>🔍 可疑工單分析</div>
+                <div style={{color:C.textMid,fontSize:12,marginTop:2}}>{diffAnalysisModal.cat} · {diffAnalysisModal.brand} · {diffAnalysisModal.model}</div>
+                <div style={{marginTop:4,display:"flex",gap:10,fontSize:11}}>
+                  <span style={{color:C.textDim}}>系統：<span style={{color:C.text,fontWeight:700}}>{diffAnalysisModal.systemQty}</span></span>
+                  <span style={{color:C.textDim}}>實際：<span style={{color:C.gold,fontWeight:700}}>{diffAnalysisModal.actualQty}</span></span>
+                  <span style={{color:C.textDim}}>差異：<span style={{color:diffAnalysisModal.diff<0?C.red:C.green,fontWeight:700}}>{diffAnalysisModal.diff>0?"+":""}{diffAnalysisModal.diff}</span></span>
+                </div>
+              </div>
+              <button onClick={()=>setDiffAnalysisModal(null)} style={{background:"none",border:"none",color:C.textDim,fontSize:20,cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{color:C.accent,fontWeight:700,fontSize:12,marginBottom:8}}>可疑工單（共 {diffAnalysisModal.suspects.length} 筆，僅供參考）</div>
+            {diffAnalysisModal.suspects.length===0&&(
+              <div style={{color:C.textDim,fontSize:12,textAlign:"center",padding:"24px 0"}}>
+                未找到可疑工單<br/>
+                <span style={{fontSize:10}}>差異可能來自人工調整、舊資料或尚未輸入的進貨</span>
+              </div>
+            )}
+            {diffAnalysisModal.suspects.map((s,i)=>(
+              <div key={i} style={{padding:"10px 12px",marginBottom:6,borderRadius:10,border:`1px solid rgba(255,140,0,0.25)`,background:"rgba(255,100,0,0.06)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                  <span style={{color:C.text,fontWeight:700,fontSize:12}}>📅 {s.date}</span>
+                  <span style={{padding:"1px 7px",borderRadius:10,fontSize:10,fontWeight:800,
+                    background:s.score>=80?"rgba(255,60,60,0.2)":s.score>=65?"rgba(255,140,0,0.2)":"rgba(0,100,200,0.2)",
+                    color:s.score>=80?C.red:s.score>=65?C.orange:C.accent}}>可疑 {s.score}</span>
+                </div>
+                <div style={{color:C.orange,fontSize:11,marginBottom:4,fontWeight:600}}>{s.reason}</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",fontSize:11,marginBottom:s.customer?4:0}}>
+                  <span style={{color:C.textDim}}>品項：<span style={{color:C.textMid}}>{s.itemName}</span></span>
+                  <span style={{color:C.textDim}}>數量：<span style={{color:C.textMid}}>× {s.qty}</span></span>
+                </div>
+                {s.customer&&<div style={{color:C.textDim,fontSize:11}}>👤 {s.customer}</div>}
+                {s.recent&&<div style={{color:C.green,fontSize:9,marginTop:2}}>✦ 30 天內</div>}
+                {onJumpToOrder&&s.orderId&&(
+                  <button onClick={()=>{setDiffAnalysisModal(null);setDiffTableModal(false);onJumpToOrder(s.orderId);}}
+                    style={{marginTop:6,padding:"3px 10px",borderRadius:6,border:`1px solid ${C.accent}`,background:"rgba(0,100,200,0.18)",color:C.accent,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 查看工單</button>
+                )}
+              </div>
+            ))}
+            <div style={{padding:"8px 12px",background:"rgba(0,150,255,0.07)",border:`1px solid rgba(0,150,255,0.2)`,borderRadius:8,fontSize:10,color:C.textDim,marginTop:8}}>
+              ⚠️ 此分析僅供參考，系統不會自動修改任何資料，請人工確認後再操作。
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 庫存調整彈窗 */}
       {adjTarget&&(
         <div onClick={()=>setAdjTarget(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -2977,6 +3252,39 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                     placeholder="單件損耗金額（元）"
                     style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
                 )}
+              </div>
+            )}
+
+            {/* 負數：售價與成本 */}
+            {Number(adjForm.qty)<0&&(
+              <div style={{marginBottom:12,padding:10,background:"rgba(0,200,80,0.08)",border:`1px solid rgba(0,200,80,0.2)`,borderRadius:9}}>
+                <div style={{color:C.green,fontSize:12,fontWeight:700,marginBottom:8}}>💰 盤點售出設定</div>
+                <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>售價（每件）</div>
+                <input type="number" value={adjForm.salePrice} onChange={e=>setAdjForm(f=>({...f,salePrice:e.target.value}))}
+                  placeholder="輸入售價（元）"
+                  style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"inherit",marginBottom:8}}/>
+                <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>成本（每件，自動帶入）</div>
+                <input type="number" value={adjForm.unitCost} onChange={e=>setAdjForm(f=>({...f,unitCost:e.target.value}))}
+                  placeholder="成本（元）"
+                  style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+                {adjForm.salePrice&&adjForm.unitCost&&(
+                  <div style={{color:C.green,fontSize:11,marginTop:6}}>
+                    預估利潤：NT${((Number(adjForm.salePrice)-Number(adjForm.unitCost))*Math.abs(Number(adjForm.qty)||1)).toLocaleString()}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 正數：成本輸入 */}
+            {Number(adjForm.qty)>0&&(
+              <div style={{marginBottom:12,padding:10,background:"rgba(0,100,200,0.08)",border:`1px solid rgba(0,100,200,0.2)`,borderRadius:9}}>
+                <div style={{color:C.accent,fontSize:12,fontWeight:700,marginBottom:8}}>📦 盤點增加設定</div>
+                <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>
+                  成本（每件）{adjForm.unitCost?`：已自動帶入 NT$${Number(adjForm.unitCost).toLocaleString()}`:""}
+                </div>
+                <input type="number" value={adjForm.unitCost} onChange={e=>setAdjForm(f=>({...f,unitCost:e.target.value}))}
+                  placeholder="成本（元，可手動修改）"
+                  style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
               </div>
             )}
 
@@ -5886,7 +6194,7 @@ function App() {
       <div style={{padding:"16px 14px 32px",position:"relative",zIndex:1}}>
         {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases} pendingOrderId={pendingOrderId} onPendingConsumed={()=>setPendingOrderId(null)}/>}
         {page==="purchases"&&<PurchasesPage purchases={purchases} setPurchases={setPur} catalog={catalog} stock={stock} orders={orders}/>}
-        {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} expenses={expenses} setExpenses={e=>{setExp(e);save(SK.expenses,e);}} stockAdj={stockAdj} setStockAdj={a=>{setStockAdj(a);save(SK.stockAdj,a);}} orders={orders} onJumpToOrder={id=>{setPendingOrderId(id);setPage("orders");}}/>}
+        {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} expenses={expenses} setExpenses={e=>{setExp(e);save(SK.expenses,e);}} stockAdj={stockAdj} setStockAdj={a=>{setStockAdj(a);save(SK.stockAdj,a);}} orders={orders} setOrders={o=>{setOrders(o);save(SK.orders,o);}} onJumpToOrder={id=>{setPendingOrderId(id);setPage("orders");}}/>}
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
         {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses}/>}
         {page==="lookup"   &&<LookupPage/>}
