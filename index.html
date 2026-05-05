@@ -1484,9 +1484,15 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
 }
 
 // ─── ORDERS PAGE ──────────────────────────────────────────────────────────────
-function OrdersPage({orders,setOrders,catalog,stock,purchases}) {
+function OrdersPage({orders,setOrders,catalog,stock,purchases,pendingOrderId,onPendingConsumed}) {
   const [view,setView]  = useState("list");
   const [edit,setEdit]  = useState(null);
+  useEffect(()=>{
+    if(!pendingOrderId)return;
+    const target=orders.find(o=>o.id===pendingOrderId);
+    if(target){setEdit(target);setView("edit");}
+    onPendingConsumed&&onPendingConsumed();
+  },[pendingOrderId]);
   const [fy,setFy]      = useState(nowYM().y);
   const [fm,setFm]      = useState(nowYM().m);
   const [fd,setFd]      = useState("全部"); // 日期篩選
@@ -2142,7 +2148,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
 }
 
 // ─── INVENTORY PAGE ───────────────────────────────────────────────────────────
-function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses,setExpenses,stockAdj,setStockAdj,orders}) {
+function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses,setExpenses,stockAdj,setStockAdj,orders,onJumpToOrder}) {
   window.__vendorList__ = catalog.vendors||DEF.vendors;
   const [filterCat,setFilterCat]     = useState("全部");
   const [stockModal,setStockModal]   = useState(null); // {cat,brand,model}
@@ -2155,6 +2161,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
   const [adjTarget,setAdjTarget] = useState(null); // {stockId,cat,brand,model}
   const [adjForm,setAdjForm]     = useState({qty:"",reason:"盤點補正",note:"",date:today(),affectCost:false,affectExpense:false,unitCost:""});
   const [showAdjLog,setShowAdjLog] = useState(false);
+  const [usageModal,setUsageModal] = useState(null);
 
   // ── 庫存盤點模式 state ────────────────────────────────────────────────────
   const [stocktakeMode,setStocktakeMode] = useState(false);
@@ -2344,6 +2351,14 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
   function openAdj(stockId,cat,brand,model){
     setAdjTarget({stockId,cat,brand,model});
     setAdjForm({qty:"",reason:"盤點補正",note:"",date:today(),affectCost:false,affectExpense:false,unitCost:""});
+  }
+
+  function getUsageHistory(skId){
+    return (orders||[])
+      .filter(o=>(o.items||[]).some(i=>i.stockId===skId)&&o.date)
+      .map(o=>o.date)
+      .sort()
+      .reverse();
   }
 
   function handleAdj(){
@@ -2631,7 +2646,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>已用</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>庫存</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}></div>
-                                      <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center",minWidth:60}}>使用型號</div>
+                                      <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center",minWidth:60}}>使用時間</div>
                                       {stocktakeMode&&<div style={{color:C.gold,fontSize:10,fontWeight:700,textAlign:"center"}}>實際</div>}
                                       {sObj.models.map(m=>{
                                         const sk=stock[catObj.cat+"__"+bObj.brand+"__"+m]||{totalIn:0,totalUsed:0,stock:0};
@@ -2656,21 +2671,36 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                                               <button onClick={()=>openAdj(skId,catObj.cat,bObj.brand,m)} style={{padding:"2px 7px",borderRadius:6,border:`1px solid ${C.border}`,background:"rgba(0,100,200,0.18)",color:C.accent,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>調整</button>
                                             </div>
                                             {(()=>{
-                                              const usedModels=[...new Set(
-                                                (orders||[])
-                                                  .filter(o=>(o.items||[]).some(i=>i.stockId===skId))
-                                                  .map(o=>o.modelName||o.modelFree||"")
-                                                  .filter(Boolean)
-                                              )];
+                                              const lastUsedDate=(orders||[])
+                                                .filter(o=>(o.items||[]).some(i=>i.stockId===skId)&&o.date)
+                                                .map(o=>o.date)
+                                                .sort()
+                                                .at(-1)||null;
                                               return(
-                                                <div style={{padding:"3px 4px",display:"flex",flexWrap:"wrap",gap:2,alignItems:"center",minWidth:0}}>
-                                                  {usedModels.length===0
-                                                    ?<span style={{color:C.textDim,fontSize:9,textAlign:"center",width:"100%"}}>—</span>
-                                                    :usedModels.slice(0,3).map((mn,i)=>(
-                                                      <span key={i} style={{background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:4,color:C.accent,fontSize:9,padding:"1px 5px",whiteSpace:"nowrap",maxWidth:72,overflow:"hidden",textOverflow:"ellipsis",display:"inline-block"}}>{mn}</span>
-                                                    ))
+                                                <div style={{padding:"3px 4px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:0}}>
+                                                  {lastUsedDate
+                                                    ?<span style={{color:C.textMid,fontSize:9,whiteSpace:"nowrap"}}>{lastUsedDate}</span>
+                                                    :<span style={{color:C.textDim,fontSize:9}}>—</span>
                                                   }
-                                                  {usedModels.length>3&&<span style={{color:C.textDim,fontSize:9}}>+{usedModels.length-3}</span>}
+                                                  {lastUsedDate&&(
+                                                    <button
+                                                      onClick={()=>{
+                                                        const records=(orders||[])
+                                                          .filter(o=>(o.items||[]).some(i=>i.stockId===skId)&&o.date)
+                                                          .map(o=>({
+                                                            orderId:o.id,
+                                                            date:o.date,
+                                                            orderNo:o.orderNo||o.id||"",
+                                                            customer:o.customerName||o.customer||"",
+                                                            qty:(o.items||[]).filter(i=>i.stockId===skId).reduce((s,i)=>s+(Number(i.qty)||1),0),
+                                                            cost:(o.items||[]).filter(i=>i.stockId===skId).reduce((s,i)=>s+(Number(i.cost)||0)*(Number(i.qty)||1),0),
+                                                          }))
+                                                          .sort((a,b)=>b.date.localeCompare(a.date));
+                                                        setUsageModal({skId,cat:catObj.cat,brand:bObj.brand,model:m,records});
+                                                      }}
+                                                      style={{padding:"1px 6px",borderRadius:4,border:`1px solid ${C.border}`,background:"rgba(0,60,150,0.2)",color:C.textDim,fontSize:9,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
+                                                    >查看</button>
+                                                  )}
                                                 </div>
                                               );
                                             })()}
@@ -3071,6 +3101,41 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                 <button onClick={confirmAutoCorrect} style={{flex:2,padding:"10px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.accent2},${C.accent})`,color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>🔁 確認執行修正</button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 使用紀錄彈窗 */}
+      {usageModal&&(
+        <div onClick={()=>setUsageModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f3c",border:`1.5px solid ${C.borderHi}`,borderRadius:16,padding:20,width:"90%",maxWidth:480,maxHeight:"80vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+              <div>
+                <div style={{color:C.gold,fontWeight:800,fontSize:15}}>📦 使用紀錄</div>
+                <div style={{color:C.textMid,fontSize:12,marginTop:2}}>{usageModal.cat} · {usageModal.brand} · {usageModal.model}</div>
+                <div style={{color:C.textDim,fontSize:10,marginTop:1}}>stockId: {usageModal.skId}</div>
+              </div>
+              <button onClick={()=>setUsageModal(null)} style={{background:"none",border:"none",color:C.textDim,fontSize:20,cursor:"pointer",lineHeight:1}}>✕</button>
+            </div>
+            <div style={{color:C.accent,fontWeight:700,fontSize:12,marginBottom:8}}>使用紀錄（共 {usageModal.records.length} 筆）</div>
+            {usageModal.records.length===0&&(
+              <div style={{color:C.textDim,fontSize:12,textAlign:"center",padding:"20px 0"}}>尚無使用紀錄</div>
+            )}
+            {usageModal.records.map((r,i)=>(
+              <div key={i} style={{padding:"10px 12px",marginBottom:6,borderRadius:10,border:`1px solid ${C.border}`,background:"rgba(0,20,60,0.4)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:(r.customer||r.orderNo)?4:0}}>
+                  <span onClick={()=>{setUsageModal(null);onJumpToOrder&&onJumpToOrder(r.orderId);}} style={{color:C.accent,fontWeight:700,fontSize:13,cursor:"pointer",textDecoration:"underline dotted"}}>📅 {r.date}</span>
+                  <span style={{color:C.accent,fontWeight:700,fontSize:13}}>× {r.qty}</span>
+                </div>
+                {(r.customer||r.orderNo)&&(
+                  <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:3}}>
+                    {r.customer&&<span style={{color:C.textMid,fontSize:11}}>👤 {r.customer}</span>}
+                    {r.orderNo&&<span style={{color:C.textDim,fontSize:11}}>工單：{r.orderNo}</span>}
+                  </div>
+                )}
+                {r.cost>0&&<div style={{color:C.gold,fontSize:11,marginTop:3}}>成本：NT${r.cost.toLocaleString()}</div>}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -5652,6 +5717,7 @@ function App() {
   const [loggedIn,setLoggedIn] = useState(()=>!!sessionStorage.getItem("a911_auth"));
   const [role,setRole]         = useState(()=>sessionStorage.getItem("a911_auth")||"");
   const [page,setPage]    = useState("orders");
+  const [pendingOrderId,setPendingOrderId] = useState(null);
   const [orders,setOrders]= useState(()=>load(SK.orders,[]));
   const [purchases,setPur]= useState(()=>load(SK.purchases,[]));
   const [expenses,setExp] = useState(()=>load(SK.expenses,{}));
@@ -5818,9 +5884,9 @@ function App() {
 
       {/* Content */}
       <div style={{padding:"16px 14px 32px",position:"relative",zIndex:1}}>
-        {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases}/>}
+        {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases} pendingOrderId={pendingOrderId} onPendingConsumed={()=>setPendingOrderId(null)}/>}
         {page==="purchases"&&<PurchasesPage purchases={purchases} setPurchases={setPur} catalog={catalog} stock={stock} orders={orders}/>}
-        {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} expenses={expenses} setExpenses={e=>{setExp(e);save(SK.expenses,e);}} stockAdj={stockAdj} setStockAdj={a=>{setStockAdj(a);save(SK.stockAdj,a);}} orders={orders}/>}
+        {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} expenses={expenses} setExpenses={e=>{setExp(e);save(SK.expenses,e);}} stockAdj={stockAdj} setStockAdj={a=>{setStockAdj(a);save(SK.stockAdj,a);}} orders={orders} onJumpToOrder={id=>{setPendingOrderId(id);setPage("orders");}}/>}
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
         {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses}/>}
         {page==="lookup"   &&<LookupPage/>}
