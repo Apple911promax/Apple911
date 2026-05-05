@@ -2142,7 +2142,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
 }
 
 // ─── INVENTORY PAGE ───────────────────────────────────────────────────────────
-function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses,setExpenses,stockAdj,setStockAdj}) {
+function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses,setExpenses,stockAdj,setStockAdj,orders}) {
   window.__vendorList__ = catalog.vendors||DEF.vendors;
   const [filterCat,setFilterCat]     = useState("全部");
   const [stockModal,setStockModal]   = useState(null); // {cat,brand,model}
@@ -2625,12 +2625,13 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                                     <span style={{color:C.textMid,fontSize:14,transform:sCol?"rotate(0)":"rotate(180deg)",transition:"transform .2s"}}>⌃</span>
                                   </div>
                                   {!sCol&&(
-                                    <div style={{display:"grid",gridTemplateColumns:stocktakeMode?"2fr 1fr 1fr 1fr auto auto":"2fr 1fr 1fr 1fr auto",gap:3,padding:"6px 8px"}}>
+                                    <div style={{display:"grid",gridTemplateColumns:stocktakeMode?"2fr 1fr 1fr 1fr auto auto auto":"2fr 1fr 1fr 1fr auto auto",gap:3,padding:"6px 8px"}}>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,padding:"3px 6px"}}>型號</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>進貨</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>已用</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}>庫存</div>
                                       <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center"}}></div>
+                                      <div style={{color:C.textDim,fontSize:10,fontWeight:700,textAlign:"center",minWidth:60}}>使用型號</div>
                                       {stocktakeMode&&<div style={{color:C.gold,fontSize:10,fontWeight:700,textAlign:"center"}}>實際</div>}
                                       {sObj.models.map(m=>{
                                         const sk=stock[catObj.cat+"__"+bObj.brand+"__"+m]||{totalIn:0,totalUsed:0,stock:0};
@@ -2654,6 +2655,25 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                                             <div style={{textAlign:"center",padding:"3px 0"}}>
                                               <button onClick={()=>openAdj(skId,catObj.cat,bObj.brand,m)} style={{padding:"2px 7px",borderRadius:6,border:`1px solid ${C.border}`,background:"rgba(0,100,200,0.18)",color:C.accent,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>調整</button>
                                             </div>
+                                            {(()=>{
+                                              const usedModels=[...new Set(
+                                                (orders||[])
+                                                  .filter(o=>(o.items||[]).some(i=>i.stockId===skId))
+                                                  .map(o=>o.modelName||o.modelFree||"")
+                                                  .filter(Boolean)
+                                              )];
+                                              return(
+                                                <div style={{padding:"3px 4px",display:"flex",flexWrap:"wrap",gap:2,alignItems:"center",minWidth:0}}>
+                                                  {usedModels.length===0
+                                                    ?<span style={{color:C.textDim,fontSize:9,textAlign:"center",width:"100%"}}>—</span>
+                                                    :usedModels.slice(0,3).map((mn,i)=>(
+                                                      <span key={i} style={{background:"rgba(0,100,255,0.15)",border:`1px solid ${C.borderHi}`,borderRadius:4,color:C.accent,fontSize:9,padding:"1px 5px",whiteSpace:"nowrap",maxWidth:72,overflow:"hidden",textOverflow:"ellipsis",display:"inline-block"}}>{mn}</span>
+                                                    ))
+                                                  }
+                                                  {usedModels.length>3&&<span style={{color:C.textDim,fontSize:9}}>+{usedModels.length-3}</span>}
+                                                </div>
+                                              );
+                                            })()}
                                             {stocktakeMode&&(()=>{
                                               const actVal=stocktakeQty[skId]||"";
                                               const diff=actVal!==""&&!isNaN(Number(actVal))?Number(actVal)-displayStock:null;
@@ -5800,7 +5820,7 @@ function App() {
       <div style={{padding:"16px 14px 32px",position:"relative",zIndex:1}}>
         {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases}/>}
         {page==="purchases"&&<PurchasesPage purchases={purchases} setPurchases={setPur} catalog={catalog} stock={stock} orders={orders}/>}
-        {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} expenses={expenses} setExpenses={e=>{setExp(e);save(SK.expenses,e);}} stockAdj={stockAdj} setStockAdj={a=>{setStockAdj(a);save(SK.stockAdj,a);}}/>}
+        {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} expenses={expenses} setExpenses={e=>{setExp(e);save(SK.expenses,e);}} stockAdj={stockAdj} setStockAdj={a=>{setStockAdj(a);save(SK.stockAdj,a);}} orders={orders}/>}
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
         {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses}/>}
         {page==="lookup"   &&<LookupPage/>}
