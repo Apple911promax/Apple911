@@ -2465,6 +2465,8 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
       cat:adjTarget.cat, brand:adjTarget.brand, model:adjTarget.model,
       qty, reason:adjForm.reason, note:adjForm.note, date:adjForm.date,
       affectCost:adjForm.affectCost, affectExpense:adjForm.affectExpense,
+      unitCost:Number(adjForm.unitCost)||0,
+      lossAmt:(Number(adjForm.unitCost)||0)*Math.abs(qty),
       createdAt:Date.now(),
     };
     // 寫入 stockAdjustments 紀錄
@@ -2487,7 +2489,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
       const mk=adjForm.date.slice(0,7);
       const lossAmt=Number(adjForm.unitCost)*Math.abs(qty)||0;
       const cur=expenses[mk]||{items:[]};
-      const newItem={id:uid(),name:`庫存損耗：${adjTarget.cat} ${adjTarget.model}`,amount:lossAmt,note:adjForm.note||""};
+      const newItem={id:uid(),name:`庫存損耗：${adjTarget.cat} ${adjTarget.model}`,amount:lossAmt,note:adjForm.note||"",isLoss:true,stockId:adjTarget.stockId,qty:Math.abs(qty),unitCost:Number(adjForm.unitCost)||0};
       const nextExp={...expenses,[mk]:{...cur,items:[...(cur.items||[]),newItem]}};
       setExpenses(nextExp);
     }
@@ -3468,10 +3470,14 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                       <span style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:a.reason==="品項更正"?"rgba(150,50,255,0.2)":"rgba(0,100,200,0.2)",color:a.reason==="品項更正"?"#c084fc":C.accent,fontWeight:700}}>{a.reason}</span>
                       {a.affectCost&&<span style={{fontSize:10,color:C.green}}>💰 計成本</span>}
                       {a.affectExpense&&<span style={{fontSize:10,color:C.red}}>📉 計損耗</span>}
+                      {a.affectExpense&&a.lossAmt>0&&<span style={{fontSize:10,color:C.red,fontWeight:700}}>損耗金額 NT${a.lossAmt.toLocaleString()}</span>}
                     </div>
                     <div style={{color:C.textDim,fontSize:11,marginTop:3}}>{a.date}{a.note&&` · ${a.note}`}</div>
                   </div>
-                  <div style={{color:a.qty>0?C.green:C.red,fontWeight:800,fontSize:15,flexShrink:0,marginLeft:8}}>{a.qty>0?"+":""}{a.qty}</div>
+                  <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
+                    <div style={{color:a.qty>0?C.green:C.red,fontWeight:800,fontSize:15}}>{a.qty>0?"+":""}{a.qty}</div>
+                    {a.affectExpense&&a.lossAmt>0&&<div style={{color:C.red,fontSize:11,fontWeight:700,marginTop:2}}>-NT${a.lossAmt.toLocaleString()}</div>}
+                  </div>
                 </div>
               ))}
             </div>
