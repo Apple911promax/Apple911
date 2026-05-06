@@ -3710,7 +3710,7 @@ function ExpensesPage({orders,purchases,expenses,setExpenses,catalog}) {
         {/* 固定支出各項（可刪除） */}
         {(me.items||[]).map(item=>(
           <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
-            <span style={{color:C.textMid,fontSize:13}}>{item.label}</span>
+            <span style={{color:item.isLoss?C.red:C.textMid,fontSize:13}}>{item.label||item.name}</span>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               <span style={{color:C.text,fontWeight:700}}>{fmt(item.amount)}</span>
               <Btn v="danger" sm onClick={()=>delExp(item.id)}>✕</Btn>
