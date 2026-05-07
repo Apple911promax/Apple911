@@ -3010,8 +3010,38 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                 style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit",colorScheme:"dark"}}/>
             </div>
 
+            {(()=>{
+              const fc=tfForm.fromId?getUnitCostForStock(tfForm.fromId):0;
+              const tc=tfForm.toId?getUnitCostForStock(tfForm.toId):0;
+              const q=parseInt(tfForm.qty,10)||0;
+              if(tfForm.fromId&&tfForm.toId&&tfForm.fromId!==tfForm.toId&&fc!==tc&&q>0){
+                const diff=(tc-fc)*q;
+                return(
+                  <div style={{padding:"10px 12px",background:diff>0?"rgba(255,60,90,0.1)":"rgba(0,200,100,0.08)",border:`1px solid ${diff>0?"rgba(255,60,90,0.35)":"rgba(0,200,100,0.3)"}`,borderRadius:8,fontSize:12,marginBottom:10}}>
+                    <div style={{color:diff>0?C.red:C.green,fontWeight:800,marginBottom:4}}>💰 移轉價差預覽</div>
+                    <div style={{display:"flex",gap:12,flexWrap:"wrap",color:C.textMid,fontSize:11}}>
+                      <span>來源成本 <span style={{color:C.gold,fontWeight:700}}>NT${fc.toLocaleString()}</span></span>
+                      <span>目標成本 <span style={{color:C.gold,fontWeight:700}}>NT${tc.toLocaleString()}</span></span>
+                      <span>數量 <span style={{color:C.text,fontWeight:700}}>×{q}</span></span>
+                    </div>
+                    <div style={{marginTop:6,color:diff>0?C.red:C.green,fontWeight:800,fontSize:14}}>
+                      價差：{diff>0?"+":""}{fmt(diff)}
+                      <span style={{color:C.textDim,fontWeight:400,fontSize:10,marginLeft:6}}>{diff>0?"（計入成本，利潤減少）":"（成本減少，利潤增加）"}</span>
+                    </div>
+                  </div>
+                );
+              }
+              if(tfForm.fromId&&tfForm.toId&&tfForm.fromId!==tfForm.toId&&fc===tc){
+                return(
+                  <div style={{padding:"8px 12px",background:"rgba(0,200,100,0.06)",border:`1px solid rgba(0,200,100,0.2)`,borderRadius:8,fontSize:11,color:C.green,marginBottom:10}}>
+                    ✅ 來源與目標成本相同（NT${fc.toLocaleString()}），無價差補正
+                  </div>
+                );
+              }
+              return null;
+            })()}
             <div style={{padding:"8px 12px",background:"rgba(255,200,0,0.07)",border:`1px solid rgba(255,200,0,0.2)`,borderRadius:8,fontSize:11,color:C.gold,marginBottom:14}}>
-              ⚠️ 此操作只修正庫存數量並留下紀錄，不影響工單收入、進貨成本或月結算利潤。
+              ⚠️ 此操作修正庫存數量並留下紀錄。若來源與目標成本不同，差額將計入累積盈虧。
             </div>
 
             <div style={{display:"flex",gap:8}}>
