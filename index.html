@@ -97,7 +97,7 @@ async function cloudLoad(key, def) {
 }
 
 // ─── LOCAL FALLBACK ───────────────────────────────────────────────────────────
-const SK = { orders:"a911_orders", purchases:"a911_purchases", expenses:"a911_expenses", catalog:"a911_catalog", stockAdj:"a911_stockAdj" };
+const SK = { orders:"a911_orders", purchases:"a911_purchases", expenses:"a911_expenses", catalog:"a911_catalog", stockAdj:"a911_stockAdj", transferDiffs:"a911_transferDiffs" };
 const localLoad = (k,d) => { try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;} };
 const localSave = (k,v) => { try{localStorage.setItem(k,JSON.stringify(v));}catch{} };
 
@@ -2148,7 +2148,7 @@ function PurchasesPage({purchases,setPurchases,catalog,stock,orders}) {
 }
 
 // ─── INVENTORY PAGE ───────────────────────────────────────────────────────────
-function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses,setExpenses,stockAdj,setStockAdj,orders,setOrders,onJumpToOrder}) {
+function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses,setExpenses,stockAdj,setStockAdj,transferDiffs,setTransferDiffs,orders,setOrders,onJumpToOrder}) {
   window.__vendorList__ = catalog.vendors||DEF.vendors;
   const [filterCat,setFilterCat]     = useState("全部");
   const [stockModal,setStockModal]   = useState(null); // {cat,brand,model}
@@ -2161,6 +2161,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
   const [adjTarget,setAdjTarget] = useState(null); // {stockId,cat,brand,model}
   const [adjForm,setAdjForm]     = useState({qty:"",reason:"盤點補正",note:"",date:today(),affectCost:false,affectExpense:false,unitCost:"",salePrice:""});
   const [showAdjLog,setShowAdjLog] = useState(false);
+  const [showTransferDiffs,setShowTransferDiffs] = useState(false);
   const [usageModal,setUsageModal] = useState(null);
   const [diffTableModal,setDiffTableModal] = useState(false);
   const [diffAnalysisModal,setDiffAnalysisModal] = useState(null);
@@ -2549,6 +2550,19 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
     const recTo  ={...base, id:uid(), stockId:tfForm.toId,   name:toLabel,   qty:+qty,
       note:`從「${fromLabel}」轉入${tfForm.note?`：${tfForm.note}`:""}`};
     setStockAdj([recFrom,recTo,...(stockAdj||[])]);
+    // 計算移轉價差（同 stockId 已在上方攔截；此處檢查成本是否相同）
+    const fromCost=getUnitCostForStock(tfForm.fromId);
+    const toCost  =getUnitCostForStock(tfForm.toId);
+    if(fromCost!==toCost){
+      const diffAmt=(toCost-fromCost)*qty;
+      const diffRec={
+        id:uid(), createdAt:Date.now(), date:tfForm.date,
+        fromId:tfForm.fromId, fromLabel, toId:tfForm.toId, toLabel,
+        qty, fromCost, toCost, diffAmt,
+        note:tfForm.note||"",
+      };
+      setTransferDiffs([diffRec,...(transferDiffs||[])]);
+    }
     setTransferModal(false);
     setTfForm({fromId:"",toId:"",qty:"",note:"",date:today()});
     alert(`✅ 庫存轉移完成\n「${fromLabel}」－${qty} 件\n「${toLabel}」＋${qty} 件`);
@@ -3484,6 +3498,51 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
           )}
         </Card>
       )}
+
+      {/* 品項移轉價差紀錄表 */}
+      {(transferDiffs||[]).length>0&&(
+        <Card style={{marginTop:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:showTransferDiffs?12:0}}>
+            <H style={{margin:0}}>🔄 品項移轉價差紀錄</H>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{background:C.orange,color:"#fff",borderRadius:10,fontSize:11,fontWeight:800,padding:"1px 8px"}}>{(transferDiffs||[]).length}</span>
+              <button onClick={()=>setShowTransferDiffs(s=>!s)} style={{background:"none",border:"none",color:C.textDim,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>{showTransferDiffs?"▲ 收合":"▼ 展開"}</button>
+            </div>
+          </div>
+          {showTransferDiffs&&(
+            <div>
+              {(transferDiffs||[]).slice(0,50).map(r=>(
+                <div key={r.id} style={{padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:4}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:3}}>
+                        <span style={{color:C.text,fontSize:12,fontWeight:700}}>{r.fromLabel}</span>
+                        <span style={{color:C.textDim,fontSize:11}}>→</span>
+                        <span style={{color:C.accent,fontSize:12,fontWeight:700}}>{r.toLabel}</span>
+                        <span style={{color:C.textDim,fontSize:11}}>× {r.qty}</span>
+                      </div>
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:11,color:C.textDim}}>
+                        <span>來源成本 <span style={{color:C.gold,fontWeight:700}}>NT${r.fromCost.toLocaleString()}</span></span>
+                        <span>目標成本 <span style={{color:C.gold,fontWeight:700}}>NT${r.toCost.toLocaleString()}</span></span>
+                      </div>
+                      <div style={{color:C.textDim,fontSize:11,marginTop:2}}>{r.date}{r.note&&` · ${r.note}`}</div>
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
+                      <div style={{color:r.diffAmt>0?C.red:C.green,fontWeight:800,fontSize:14}}>{r.diffAmt>0?"+":""}{fmt(r.diffAmt)}</div>
+                      <div style={{color:C.textDim,fontSize:10,marginTop:2}}>價差</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div style={{color:C.textDim,fontSize:11,marginTop:10,textAlign:"right"}}>
+                累積價差：<span style={{color:(transferDiffs||[]).reduce((a,r)=>a+r.diffAmt,0)>=0?C.red:C.green,fontWeight:700}}>
+                  {fmt((transferDiffs||[]).reduce((a,r)=>a+r.diffAmt,0))}
+                </span>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   );
 }
@@ -3793,7 +3852,7 @@ function ExpensesPage({orders,purchases,expenses,setExpenses,catalog}) {
 }
 
 // ─── REPORTS PAGE ─────────────────────────────────────────────────────────────
-function ReportsPage({orders,purchases,expenses}) {
+function ReportsPage({orders,purchases,expenses,transferDiffs}) {
   const [tab,setTab]=useState("annual"); const [y1,setY1]=useState(nowYM().y); const [y2,setY2]=useState(nowYM().y-1); const [cm,setCm]=useState(nowYM().m);
   const years=Array.from({length:nowYM().y-2025+2},(_,i)=>nowYM().y+1-i).filter(y=>y>=2025);
   function getMD(y,m){const mk=mkey(y,m);const mo=orders.filter(o=>o.date?.slice(0,7)===mk);const rev=mo.reduce((a,o)=>a+o.totalRevenue,0);const lp=mo.reduce((a,o)=>a+(o.linePayFee||0)+(o.linePayTax||0),0);const totP=purchases.filter(p=>p.date?.slice(0,7)===mk).reduce((a,p)=>a+p.amount,0);const fx=((expenses[mk]||{}).items||[]).reduce((a,i)=>a+i.amount,0);const exp=totP+fx;return{rev,exp,profit:rev-exp-lp};}
@@ -3829,6 +3888,13 @@ function ReportsPage({orders,purchases,expenses}) {
       if(!dayMap[d])dayMap[d]={rev:0,cost:0};
       dayMap[d].cost+=fx;
     });
+    // 品項移轉價差補正
+    (transferDiffs||[]).forEach(r=>{
+      if(!r.date)return;
+      const d=r.date.slice(0,10);
+      if(!dayMap[d])dayMap[d]={rev:0,cost:0};
+      dayMap[d].cost+=r.diffAmt||0;
+    });
     const days=Object.keys(dayMap).sort();
     let cumulative=0;
     return days.map(d=>{
@@ -3836,7 +3902,7 @@ function ReportsPage({orders,purchases,expenses}) {
       cumulative+=profit;
       return{date:d,rev:dayMap[d].rev,cost:dayMap[d].cost,profit,cumulative};
     }).reverse(); // 最新的在前
-  },[orders,purchases,expenses]);
+  },[orders,purchases,expenses,transferDiffs]);
 
   // 一次性開辦費用只扣一次
   const setupCostsTotal=(expenses.__setup||[]).reduce((a,i)=>a+i.amount,0);
@@ -6036,6 +6102,7 @@ function App() {
   const [purchases,setPur]= useState(()=>load(SK.purchases,[]));
   const [expenses,setExp] = useState(()=>load(SK.expenses,{}));
   const [stockAdj,setStockAdj] = useState(()=>load(SK.stockAdj,[]));
+  const [transferDiffs,setTransferDiffs] = useState(()=>load(SK.transferDiffs,[]));
   const [catalog,setCat]  = useState(()=>{
     const s=load(SK.catalog,null); if(!s) return DEF;
     return {...DEF,...s,
@@ -6200,9 +6267,9 @@ function App() {
       <div style={{padding:"16px 14px 32px",position:"relative",zIndex:1}}>
         {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases} pendingOrderId={pendingOrderId} onPendingConsumed={()=>setPendingOrderId(null)}/>}
         {page==="purchases"&&<PurchasesPage purchases={purchases} setPurchases={setPur} catalog={catalog} stock={stock} orders={orders}/>}
-        {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} expenses={expenses} setExpenses={e=>{setExp(e);save(SK.expenses,e);}} stockAdj={stockAdj} setStockAdj={a=>{setStockAdj(a);save(SK.stockAdj,a);}} orders={orders} setOrders={o=>{setOrders(o);save(SK.orders,o);}} onJumpToOrder={id=>{setPendingOrderId(id);setPage("orders");}}/>}
+        {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} expenses={expenses} setExpenses={e=>{setExp(e);save(SK.expenses,e);}} stockAdj={stockAdj} setStockAdj={a=>{setStockAdj(a);save(SK.stockAdj,a);}} transferDiffs={transferDiffs} setTransferDiffs={a=>{setTransferDiffs(a);save(SK.transferDiffs,a);}} orders={orders} setOrders={o=>{setOrders(o);save(SK.orders,o);}} onJumpToOrder={id=>{setPendingOrderId(id);setPage("orders");}}/>}
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
-        {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses}/>}
+        {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses} transferDiffs={transferDiffs}/>}
         {page==="lookup"   &&<LookupPage/>}
         {page==="vendors"  &&<VendorPage catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}}/>}
         {page==="quote"    &&<QuotePage catalog={catalog} stock={stock}/>}
