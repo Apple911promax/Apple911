@@ -2667,18 +2667,20 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
         </Card>
       )}
 
+      {/* 分類篩選 */}
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+        {["全部",...cats.map(x=>x.cat)].map(n=>(
+          <button key={n} onClick={()=>setFilterCat(n)} style={{
+            padding:"5px 11px",borderRadius:16,border:"none",cursor:"pointer",
+            fontSize:12,fontWeight:600,fontFamily:"inherit",
+            background:filterCat===n?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(255,255,255,0.07)",
+            color:filterCat===n?"#fff":C.textMid,
+          }}>{n}</button>
+        ))}
+      </div>
+
       {/* 工具列 */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,gap:8}}>
-        <div style={{display:"flex",gap:5,flexWrap:"wrap",flex:1}}>
-          {["全部",...cats.map(x=>x.cat)].map(n=>(
-            <button key={n} onClick={()=>setFilterCat(n)} style={{
-              padding:"5px 11px",borderRadius:16,border:"none",cursor:"pointer",
-              fontSize:12,fontWeight:600,fontFamily:"inherit",
-              background:filterCat===n?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(255,255,255,0.07)",
-              color:filterCat===n?"#fff":C.textMid,
-            }}>{n}</button>
-          ))}
-        </div>
+      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",marginBottom:10,gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>setManaging(m=>!m)} style={{
           padding:"7px 14px",borderRadius:10,border:`1px solid ${managing?C.accent:C.border}`,
           background:managing?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(0,40,100,0.3)",
