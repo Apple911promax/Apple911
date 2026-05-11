@@ -2577,6 +2577,9 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
   // ── 庫存轉移 state ────────────────────────────────────────────────────────
   const [transferModal,setTransferModal] = useState(false);
   const [tfForm,setTfForm] = useState({fromId:"",toId:"",qty:"",note:"",date:today()});
+  // ── 四層選擇 state（品項/品牌/系列/型號）────────────────────────────────
+  const [tfFrom,setTfFrom] = useState({cat:"",brand:"",series:"",model:""});
+  const [tfTo,setTfTo]     = useState({cat:"",brand:"",series:"",model:""});
 
   // 所有有資料的品項清單（供下拉選單）
   const stockList = useMemo(()=>{
@@ -2594,25 +2597,30 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
   function handleTransfer(){
     const qty=parseInt(tfForm.qty,10);
     if(!qty||isNaN(qty)||qty<=0){alert("請輸入有效的正整數數量");return;}
-    if(!tfForm.fromId){alert("請選擇來源品項");return;}
-    if(!tfForm.toId){alert("請選擇目標品項");return;}
-    if(tfForm.fromId===tfForm.toId){alert("來源與目標不可相同");return;}
-    const fromLabel=(stockList.find(s=>s.stockId===tfForm.fromId)||{}).label||tfForm.fromId;
-    const toLabel  =(stockList.find(s=>s.stockId===tfForm.toId  )||{}).label||tfForm.toId;
+    // 從四層 state 推導 stockId
+    if(!tfFrom.cat||!tfFrom.brand||!tfFrom.series||!tfFrom.model){alert("請完整選擇來源品項（品項/品牌/系列/型號）");return;}
+    if(!tfTo.cat||!tfTo.brand||!tfTo.series||!tfTo.model){alert("請完整選擇目標品項（品項/品牌/系列/型號）");return;}
+    const resolvedFromId=getStockId(catalog,tfFrom.cat,tfFrom.brand,tfFrom.model);
+    const resolvedToId  =getStockId(catalog,tfTo.cat,  tfTo.brand,  tfTo.model);
+    if(!resolvedFromId){alert("找不到來源品項的庫存ID，無法執行");return;}
+    if(!resolvedToId)  {alert("找不到目標品項的庫存ID，無法執行");return;}
+    if(resolvedFromId===resolvedToId){alert("來源與目標不可相同");return;}
+    const fromLabel=`${tfFrom.cat} ${tfFrom.brand} ${tfFrom.model}`;
+    const toLabel  =`${tfTo.cat} ${tfTo.brand} ${tfTo.model}`;
     const base={reason:"品項更正",date:tfForm.date,affectCost:false,affectExpense:false,createdAt:Date.now()};
-    const recFrom={...base, id:uid(), stockId:tfForm.fromId, name:fromLabel, qty:-qty,
+    const recFrom={...base, id:uid(), stockId:resolvedFromId, name:fromLabel, qty:-qty,
       note:`轉移至「${toLabel}」${tfForm.note?`：${tfForm.note}`:""}`};
-    const recTo  ={...base, id:uid(), stockId:tfForm.toId,   name:toLabel,   qty:+qty,
+    const recTo  ={...base, id:uid(), stockId:resolvedToId,   name:toLabel,   qty:+qty,
       note:`從「${fromLabel}」轉入${tfForm.note?`：${tfForm.note}`:""}`};
     setStockAdj([recFrom,recTo,...(stockAdj||[])]);
-    // 計算移轉價差（同 stockId 已在上方攔截；此處檢查成本是否相同）
-    const fromCost=getUnitCostForStock(tfForm.fromId);
-    const toCost  =getUnitCostForStock(tfForm.toId);
+    // 計算移轉價差
+    const fromCost=getUnitCostForStock(resolvedFromId);
+    const toCost  =getUnitCostForStock(resolvedToId);
     if(fromCost!==toCost){
       const diffAmt=(toCost-fromCost)*qty;
       const diffRec={
         id:uid(), createdAt:Date.now(), date:tfForm.date,
-        fromId:tfForm.fromId, fromLabel, toId:tfForm.toId, toLabel,
+        fromId:resolvedFromId, fromLabel, toId:resolvedToId, toLabel,
         qty, fromCost, toCost, diffAmt,
         note:tfForm.note||"",
       };
@@ -2620,6 +2628,8 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
     }
     setTransferModal(false);
     setTfForm({fromId:"",toId:"",qty:"",note:"",date:today()});
+    setTfFrom({cat:"",brand:"",series:"",model:""});
+    setTfTo({cat:"",brand:"",series:"",model:""});
     alert(`✅ 庫存轉移完成\n「${fromLabel}」－${qty} 件\n「${toLabel}」＋${qty} 件`);
   }
 
@@ -2741,7 +2751,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
           background:managing?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(0,40,100,0.3)",
           color:managing?"#fff":C.textMid,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,
         }}>{managing?"✓ 完成":"⚙️ 管理"}</button>
-        <button onClick={()=>{setTfForm({fromId:"",toId:"",qty:"",note:"",date:today()});setTransferModal(true);}} style={{
+        <button onClick={()=>{setTfForm({fromId:"",toId:"",qty:"",note:"",date:today()});setTfFrom({cat:"",brand:"",series:"",model:""});setTfTo({cat:"",brand:"",series:"",model:""});setTransferModal(true);}} style={{
           padding:"7px 14px",borderRadius:10,border:`1px solid ${C.border}`,
           background:"rgba(0,40,100,0.3)",
           color:C.textMid,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,
@@ -3005,42 +3015,83 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
               <button onClick={()=>setTransferModal(false)} style={{background:"none",border:"none",color:C.textDim,fontSize:20,cursor:"pointer"}}>✕</button>
             </div>
 
-            {/* 來源品項 */}
-            <div style={{marginBottom:12}}>
-              <div style={{color:C.red,fontSize:11,fontWeight:700,marginBottom:4}}>📤 來源品項（扣庫存）</div>
-              <select value={tfForm.fromId} onChange={e=>setTfForm(f=>({...f,fromId:e.target.value}))}
-                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,20,70,0.9)",border:`1px solid ${C.border}`,borderRadius:9,color:tfForm.fromId?C.text:C.textDim,padding:"9px 13px",fontSize:13,outline:"none",fontFamily:"inherit",cursor:"pointer"}}>
-                <option value="">－ 選擇來源品項 －</option>
-                {stockList.filter(s=>s.stockId!==tfForm.toId).map(s=>(
-                  <option key={s.stockId} value={s.stockId}>{s.label}</option>
-                ))}
-              </select>
-              {tfForm.fromId&&(()=>{
-                const s=stock[tfForm.fromId];
-                const adjOff=(stockAdj||[]).filter(a=>a.stockId===tfForm.fromId&&!a.cancelled).reduce((x,a)=>x+a.qty,0);
-                const cur=(s?.stock||0)+adjOff;
-                return <div style={{color:cur>0?C.textDim:C.red,fontSize:11,marginTop:4}}>目前庫存：<span style={{fontWeight:700,color:cur>0?C.accent:C.red}}>{cur}</span> 件</div>;
-              })()}
-            </div>
+            {/* 來源品項 - 四層選擇 */}
+            {(()=>{
+              const SS={background:"rgba(0,20,70,0.9)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"7px 10px",fontSize:12,outline:"none",fontFamily:"inherit",cursor:"pointer",flex:1,minWidth:0,boxSizing:"border-box"};
+              const SD={...SS,color:C.textDim,cursor:"not-allowed",opacity:0.5};
+              const tfCats=(catalog.purchaseCategories||[]).map(c=>c.cat);
+              const tfFromBrands=tfFrom.cat?(catalog.purchaseCategories||[]).find(c=>c.cat===tfFrom.cat)?.brands?.map(b=>b.brand)||[]:[];
+              const tfFromSeriesObj=tfFrom.brand?(catalog.purchaseCategories||[]).find(c=>c.cat===tfFrom.cat)?.brands?.find(b=>b.brand===tfFrom.brand)?.series||[]:[];
+              const tfFromModels=tfFrom.series?(tfFromSeriesObj.find(s=>s.name===tfFrom.series)?.models||[]):[];
+              const fromSid=tfFrom.model?getStockId(catalog,tfFrom.cat,tfFrom.brand,tfFrom.model):"";
+              const fromSk=fromSid?stock[fromSid]:null;
+              const fromAdj=fromSid?(stockAdj||[]).filter(a=>a.stockId===fromSid&&!a.cancelled).reduce((s,a)=>s+a.qty,0):0;
+              const fromCurQty=fromSk?(fromSk.stock||0)+fromAdj:null;
+              return(
+                <div style={{marginBottom:12}}>
+                  <div style={{color:C.red,fontSize:11,fontWeight:700,marginBottom:6}}>📤 來源品項（扣庫存）</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,marginBottom:4}}>
+                    <select value={tfFrom.cat} onChange={e=>setTfFrom({cat:e.target.value,brand:"",series:"",model:""})} style={SS}>
+                      <option value="">品項</option>
+                      {tfCats.map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <select value={tfFrom.brand} onChange={e=>setTfFrom(f=>({...f,brand:e.target.value,series:"",model:""}))} disabled={!tfFrom.cat} style={tfFrom.cat?SS:SD}>
+                      <option value="">品牌</option>
+                      {tfFromBrands.map(b=><option key={b} value={b}>{b}</option>)}
+                    </select>
+                    <select value={tfFrom.series} onChange={e=>setTfFrom(f=>({...f,series:e.target.value,model:""}))} disabled={!tfFrom.brand} style={tfFrom.brand?SS:SD}>
+                      <option value="">系列</option>
+                      {tfFromSeriesObj.map(s=><option key={s.name} value={s.name}>{s.name}</option>)}
+                    </select>
+                    <select value={tfFrom.model} onChange={e=>setTfFrom(f=>({...f,model:e.target.value}))} disabled={!tfFrom.series} style={tfFrom.series?SS:SD}>
+                      <option value="">型號</option>
+                      {tfFromModels.map(m=><option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                  {fromCurQty!==null&&<div style={{color:fromCurQty>0?C.textDim:C.red,fontSize:11,marginTop:2}}>目前庫存：<span style={{fontWeight:700,color:fromCurQty>0?C.accent:C.red}}>{fromCurQty}</span> 件</div>}
+                </div>
+              );
+            })()}
 
-            {/* 目標品項 */}
-            <div style={{marginBottom:12}}>
-              <div style={{color:C.green,fontSize:11,fontWeight:700,marginBottom:4}}>📥 目標品項（加庫存）</div>
-              <select value={tfForm.toId} onChange={e=>setTfForm(f=>({...f,toId:e.target.value}))}
-                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,20,70,0.9)",border:`1px solid ${C.border}`,borderRadius:9,color:tfForm.toId?C.text:C.textDim,padding:"9px 13px",fontSize:13,outline:"none",fontFamily:"inherit",cursor:"pointer"}}>
-                <option value="">－ 選擇目標品項 －</option>
-                {stockList.filter(s=>s.stockId!==tfForm.fromId).map(s=>(
-                  <option key={s.stockId} value={s.stockId}>{s.label}</option>
-                ))}
-              </select>
-            </div>
+            {/* 目標品項 - 四層選擇 */}
+            {(()=>{
+              const SS={background:"rgba(0,20,70,0.9)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,padding:"7px 10px",fontSize:12,outline:"none",fontFamily:"inherit",cursor:"pointer",flex:1,minWidth:0,boxSizing:"border-box"};
+              const SD={...SS,color:C.textDim,cursor:"not-allowed",opacity:0.5};
+              const tfCats=(catalog.purchaseCategories||[]).map(c=>c.cat);
+              const tfToBrands=tfTo.cat?(catalog.purchaseCategories||[]).find(c=>c.cat===tfTo.cat)?.brands?.map(b=>b.brand)||[]:[];
+              const tfToSeriesObj=tfTo.brand?(catalog.purchaseCategories||[]).find(c=>c.cat===tfTo.cat)?.brands?.find(b=>b.brand===tfTo.brand)?.series||[]:[];
+              const tfToModels=tfTo.series?(tfToSeriesObj.find(s=>s.name===tfTo.series)?.models||[]):[];
+              return(
+                <div style={{marginBottom:12}}>
+                  <div style={{color:C.green,fontSize:11,fontWeight:700,marginBottom:6}}>📥 目標品項（加庫存）</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
+                    <select value={tfTo.cat} onChange={e=>setTfTo({cat:e.target.value,brand:"",series:"",model:""})} style={SS}>
+                      <option value="">品項</option>
+                      {tfCats.map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <select value={tfTo.brand} onChange={e=>setTfTo(f=>({...f,brand:e.target.value,series:"",model:""}))} disabled={!tfTo.cat} style={tfTo.cat?SS:SD}>
+                      <option value="">品牌</option>
+                      {tfToBrands.map(b=><option key={b} value={b}>{b}</option>)}
+                    </select>
+                    <select value={tfTo.series} onChange={e=>setTfTo(f=>({...f,series:e.target.value,model:""}))} disabled={!tfTo.brand} style={tfTo.brand?SS:SD}>
+                      <option value="">系列</option>
+                      {tfToSeriesObj.map(s=><option key={s.name} value={s.name}>{s.name}</option>)}
+                    </select>
+                    <select value={tfTo.model} onChange={e=>setTfTo(f=>({...f,model:e.target.value}))} disabled={!tfTo.series} style={tfTo.series?SS:SD}>
+                      <option value="">型號</option>
+                      {tfToModels.map(m=><option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* 方向示意 */}
-            {tfForm.fromId&&tfForm.toId&&(
+            {tfFrom.model&&tfTo.model&&(
               <div style={{marginBottom:12,padding:"8px 12px",background:"rgba(0,100,200,0.1)",border:`1px solid rgba(0,100,200,0.25)`,borderRadius:9,fontSize:12,color:C.textMid,textAlign:"center"}}>
-                <span style={{color:C.red}}>{(stockList.find(s=>s.stockId===tfForm.fromId)||{}).label}</span>
+                <span style={{color:C.red}}>{tfFrom.cat} {tfFrom.brand} {tfFrom.model}</span>
                 <span style={{color:C.accent,margin:"0 8px"}}>→</span>
-                <span style={{color:C.green}}>{(stockList.find(s=>s.stockId===tfForm.toId)||{}).label}</span>
+                <span style={{color:C.green}}>{tfTo.cat} {tfTo.brand} {tfTo.model}</span>
               </div>
             )}
 
@@ -3068,10 +3119,12 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
             </div>
 
             {(()=>{
-              const fc=tfForm.fromId?getUnitCostForStock(tfForm.fromId):0;
-              const tc=tfForm.toId?getUnitCostForStock(tfForm.toId):0;
+              const resolvedFromId=tfFrom.model?getStockId(catalog,tfFrom.cat,tfFrom.brand,tfFrom.model):"";
+              const resolvedToId  =tfTo.model  ?getStockId(catalog,tfTo.cat,  tfTo.brand,  tfTo.model)  :"";
+              const fc=resolvedFromId?getUnitCostForStock(resolvedFromId):0;
+              const tc=resolvedToId  ?getUnitCostForStock(resolvedToId)  :0;
               const q=parseInt(tfForm.qty,10)||0;
-              if(tfForm.fromId&&tfForm.toId&&tfForm.fromId!==tfForm.toId&&fc!==tc&&q>0){
+              if(resolvedFromId&&resolvedToId&&resolvedFromId!==resolvedToId&&fc!==tc&&q>0){
                 const diff=(tc-fc)*q;
                 return(
                   <div style={{padding:"10px 12px",background:diff>0?"rgba(255,60,90,0.1)":"rgba(0,200,100,0.08)",border:`1px solid ${diff>0?"rgba(255,60,90,0.35)":"rgba(0,200,100,0.3)"}`,borderRadius:8,fontSize:12,marginBottom:10}}>
@@ -3088,7 +3141,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                   </div>
                 );
               }
-              if(tfForm.fromId&&tfForm.toId&&tfForm.fromId!==tfForm.toId&&fc===tc){
+              if(resolvedFromId&&resolvedToId&&resolvedFromId!==resolvedToId&&fc===tc){
                 return(
                   <div style={{padding:"8px 12px",background:"rgba(0,200,100,0.06)",border:`1px solid rgba(0,200,100,0.2)`,borderRadius:8,fontSize:11,color:C.green,marginBottom:10}}>
                     ✅ 來源與目標成本相同（NT${fc.toLocaleString()}），無價差補正
