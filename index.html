@@ -1095,16 +1095,52 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
         </div>
         {purOpen&&(()=>{
           const q=purSearch.toLowerCase();
+          // ── FIFO 庫存計算 ────────────────────────────────────────────────
+          // Step1: 計算每個 stockId 已被工單消耗的總數（stockId 維度，與 useStock 一致）
+          const stockIdUsed={}; // stockId → 已用總數
+          (orders||[]).forEach(o=>(o.items||[]).forEach(i=>{
+            if(i.stockId) stockIdUsed[i.stockId]=(stockIdUsed[i.stockId]||0)+(Number(i.qty)||1);
+          }));
+          // 目前工單中尚未儲存的 items 也計入（避免同批次在同工單重複帶入）
+          items.forEach(i=>{
+            if(i.stockId) stockIdUsed[i.stockId]=(stockIdUsed[i.stockId]||0)+(Number(i.qty)||1);
+          });
+          // Step2: 對每個 stockId，按 FIFO（日期舊→新，同日依 createdAt/id）排序旗下進貨批次，
+          //        依序扣除 totalUsed，算出每批 purId 的真實剩餘可用數
+          const purFifoRemaining={}; // purId → FIFO 剩餘可用數
+          const pursByStockId={};
+          (purchases||[]).forEach(p=>{
+            const sid=getStockId(catalog,p.itemCat,p.itemBrand,p.itemVariant);
+            if(!pursByStockId[sid]) pursByStockId[sid]=[];
+            pursByStockId[sid].push(p);
+          });
+          Object.entries(pursByStockId).forEach(([sid,purs])=>{
+            // FIFO：日期由舊到新，同日期依 createdAt 或 id 排序
+            const sorted=[...purs].sort((a,b)=>{
+              const da=(a.date||"").localeCompare(b.date||"");
+              if(da!==0) return da;
+              const ca=(a.createdAt||0)-(b.createdAt||0);
+              if(ca!==0) return ca;
+              return (a.id||"").localeCompare(b.id||"");
+            });
+            let toDeduct=(stockIdUsed[sid]||0);
+            sorted.forEach(p=>{
+              const batchQty=Number(p.qty)||1;
+              if(toDeduct>=batchQty){
+                purFifoRemaining[p.id]=0;
+                toDeduct-=batchQty;
+              } else {
+                purFifoRemaining[p.id]=batchQty-toDeduct;
+                toDeduct=0;
+              }
+            });
+          });
+          // 相容性：舊版 usageCount 仍保留供 usages 顯示使用
           const usageCount={};
           (orders||[]).forEach(o=>(o.items||[]).forEach(i=>{
             const pid=i.purId||(i.id.startsWith("pur_")?i.id.replace(/^pur_/,"").replace(/_\d+$/,""):null);
             if(pid) usageCount[pid]=(usageCount[pid]||0)+1;
           }));
-          items.forEach(i=>{
-            const pid=i.purId||(i.id.startsWith("pur_")?i.id.replace(/^pur_/,"").replace(/_\d+$/,""):null);
-            if(pid) usageCount[pid]=(usageCount[pid]||0)+1;
-          });
-          const isAdded=p=>usageCount[p.id]>0&&usageCount[p.id]<(p.qty||1)?false:usageCount[p.id]>=(p.qty||1);
           // 建立型號 → 通用庫存ID 的對照表（只讀取你手動設定的 stockIds，不自動產生）
           const variantToStockId={};
           const stockIdToVariants={};
@@ -1223,8 +1259,9 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
             }
             return false;
           }
+          // FIFO 結果：只顯示 FIFO 剩餘 > 0 的批次，按日期由舊到新
           const results=(purchases||[]).filter(p=>{
-            if((usageCount[p.id]||0)>=(p.qty||1)) return false;
+            if((purFifoRemaining[p.id]??-1)===0) return false; // FIFO 已耗盡
             if(!qTokens.length) return true;
             const manualSids=getManualStockIdsForPurchase(p);
             const stockIds=uniq([p.stockId,variantToStockId[p.itemVariant],...manualSids]);
@@ -1258,8 +1295,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
               {results.length===0&&<div style={{color:C.textDim,fontSize:12,textAlign:"center",padding:12}}>找不到符合的進貨記錄</div>}
               {results.map(p=>{
                 const unitCost=Math.round(p.amount/(p.qty||1));
-                const used=usageCount[p.id]||0;
-                const remaining=(p.qty||1)-used;
+                const remaining=purFifoRemaining[p.id]!==undefined?purFifoRemaining[p.id]:(p.qty||1);
                 return(
                   <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",marginBottom:6,borderRadius:10,border:`1px solid ${C.border}`,background:"rgba(0,20,60,0.4)"}}>
                     <div style={{flex:1,minWidth:0}}>
