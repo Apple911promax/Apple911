@@ -2162,6 +2162,11 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
   const [adjForm,setAdjForm]     = useState({qty:"",reason:"盤點補正",note:"",date:today(),affectCost:false,affectExpense:false,unitCost:"",salePrice:""});
   const [showAdjLog,setShowAdjLog] = useState(false);
   const [showTransferDiffs,setShowTransferDiffs] = useState(false);
+  // ── 庫存調整紀錄 編輯/取消 state ─────────────────────────────────────────
+  const [editAdjModal,setEditAdjModal] = useState(null); // {record} 正在編輯的紀錄
+  const [editAdjForm,setEditAdjForm]   = useState({qty:\"\",reason:\"\",note:\"\",lossAmt:\"\"});
+  const [cancelAdjModal,setCancelAdjModal] = useState(null); // {record} 正在取消的紀錄
+  const [cancelAdjReason,setCancelAdjReason] = useState(\"\");
   const [usageModal,setUsageModal] = useState(null);
   const [diffTableModal,setDiffTableModal] = useState(false);
   const [diffAnalysisModal,setDiffAnalysisModal] = useState(null);
@@ -2184,7 +2189,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
       // 取得目前顯示庫存（含舊調整）
       const sk=stock[skId];
       if(!sk)return;
-      const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId).reduce((s,a)=>s+a.qty,0);
+      const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled).reduce((s,a)=>s+a.qty,0);
       const currentQty=sk.stock+adjOffset;
       const diff=actual-currentQty;
       if(diff===0)return;
@@ -2236,7 +2241,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
       if(v===""||isNaN(Number(v)))return;
       const sk=stock[skId];
       if(!sk)return;
-      const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId).reduce((s,a)=>s+a.qty,0);
+      const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled).reduce((s,a)=>s+a.qty,0);
       const currentQty=sk.stock+adjOffset;
       const diff=Number(v)-currentQty;
       if(diff===0)return;
@@ -2439,6 +2444,56 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
   }
 
   const REASONS = ["盤點補正","員工漏記","遺失報廢","補登進貨"];
+
+  // ── 庫存調整紀錄：開啟編輯 ──────────────────────────────────────────────
+  function openEditAdj(record){
+    setEditAdjForm({
+      qty:String(record.qty),
+      reason:record.reason||"",
+      note:record.note||"",
+      lossAmt:record.lossAmt!=null?String(record.lossAmt):"",
+    });
+    setEditAdjModal(record);
+  }
+
+  // ── 庫存調整紀錄：儲存編輯 ──────────────────────────────────────────────
+  function handleEditAdj(){
+    const qty=parseInt(editAdjForm.qty,10);
+    if(!editAdjForm.qty||isNaN(qty)){alert("請輸入有效的調整數量");return;}
+    const updated={
+      ...editAdjModal,
+      qty,
+      reason:editAdjForm.reason||editAdjModal.reason,
+      note:editAdjForm.note,
+      lossAmt:editAdjForm.lossAmt!==""?Number(editAdjForm.lossAmt):editAdjModal.lossAmt,
+      editedAt:Date.now(),
+    };
+    const nextAdj=(stockAdj||[]).map(a=>a.id===editAdjModal.id?updated:a);
+    setStockAdj(nextAdj);
+    setEditAdjModal(null);
+    alert("✅ 已更新調整紀錄");
+  }
+
+  // ── 庫存調整紀錄：開啟取消確認 ─────────────────────────────────────────
+  function openCancelAdj(record){
+    setCancelAdjReason("");
+    setCancelAdjModal(record);
+  }
+
+  // ── 庫存調整紀錄：確認取消 ──────────────────────────────────────────────
+  function handleCancelAdj(){
+    if(!cancelAdjReason.trim()){alert("請輸入取消原因");return;}
+    const cancelled={
+      ...cancelAdjModal,
+      cancelled:true,
+      cancelledAt:Date.now(),
+      cancelReason:cancelAdjReason.trim(),
+    };
+    const nextAdj=(stockAdj||[]).map(a=>a.id===cancelAdjModal.id?cancelled:a);
+    setStockAdj(nextAdj);
+    setCancelAdjModal(null);
+    alert("✅ 已取消該筆調整紀錄，庫存已重新計算");
+  }
 
   function openAdj(stockId,cat,brand,model){
     const relPur=(purchases||[])
@@ -2790,7 +2845,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                                         const sk=stock[catObj.cat+"__"+bObj.brand+"__"+m]||{totalIn:0,totalUsed:0,stock:0};
                                         const skId=getStockId(catalog,catObj.cat,bObj.brand,m);
                                         // 計算庫存調整偏移量
-                                        const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId).reduce((s,a)=>s+a.qty,0);
+                                        const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled).reduce((s,a)=>s+a.qty,0);
                                         const displayStock=sk.stock+adjOffset;
                                         const zero=displayStock<=0&&sk.totalIn>0;
                                         const low=!zero&&displayStock<=2&&sk.totalIn>0;
@@ -2962,7 +3017,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
               </select>
               {tfForm.fromId&&(()=>{
                 const s=stock[tfForm.fromId];
-                const adjOff=(stockAdj||[]).filter(a=>a.stockId===tfForm.fromId).reduce((x,a)=>x+a.qty,0);
+                const adjOff=(stockAdj||[]).filter(a=>a.stockId===tfForm.fromId&&!a.cancelled).reduce((x,a)=>x+a.qty,0);
                 const cur=(s?.stock||0)+adjOff;
                 return <div style={{color:cur>0?C.textDim:C.red,fontSize:11,marginTop:4}}>目前庫存：<span style={{fontWeight:700,color:cur>0?C.accent:C.red}}>{cur}</span> 件</div>;
               })()}
@@ -3059,7 +3114,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
         function togDt(k){setDiffTableCol(p=>({...p,[k]:!p[k]}));}
         function skDiff(skId){
           const sk=stock[skId]||{stock:0};
-          const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId).reduce((s,a)=>s+a.qty,0);
+          const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled).reduce((s,a)=>s+a.qty,0);
           const sysQty=sk.stock+adjOffset;
           const actVal=diffTableQty[skId]||"";
           if(actVal===""||isNaN(Number(actVal)))return null;
@@ -3127,7 +3182,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                                 const sharedInSeries=(sObj.models||[]).filter(m2=>getStockId(catalog,cObj.cat,bObj.brand,m2)===skId);
                                 const label=sharedInSeries.length>1?sharedInSeries.join(" / ")+" （通用）":m;
                                 const sk=stock[skId]||{stock:0};
-                                const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId).reduce((s,a)=>s+a.qty,0);
+                                const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled).reduce((s,a)=>s+a.qty,0);
                                 const sysQty=sk.stock+adjOffset;
                                 const actVal=diffTableQty[skId]||"";
                                 const diff=actVal!==""&&!isNaN(Number(actVal))?Number(actVal)-sysQty:null;
@@ -3232,6 +3287,81 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
             ))}
             <div style={{padding:"8px 12px",background:"rgba(0,150,255,0.07)",border:`1px solid rgba(0,150,255,0.2)`,borderRadius:8,fontSize:10,color:C.textDim,marginTop:8}}>
               ⚠️ 此分析僅供參考，系統不會自動修改任何資料，請人工確認後再操作。
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 庫存調整紀錄 編輯彈窗 */}
+      {editAdjModal&&(
+        <div onClick={()=>setEditAdjModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f3c",border:`1.5px solid ${C.borderHi}`,borderRadius:16,padding:20,width:"100%",maxWidth:440,maxHeight:"88vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div>
+                <div style={{color:C.gold,fontWeight:800,fontSize:15}}>✏️ 編輯調整紀錄</div>
+                <div style={{color:C.textMid,fontSize:12,marginTop:2}}>{editAdjModal.name}</div>
+              </div>
+              <button onClick={()=>setEditAdjModal(null)} style={{background:"none",border:"none",color:C.textDim,fontSize:20,cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{marginBottom:12}}>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>調整數量（正數=加庫存，負數=減庫存）</div>
+              <input type="number" value={editAdjForm.qty} onChange={e=>setEditAdjForm(f=>({...f,qty:e.target.value}))}
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:16,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+            <div style={{marginBottom:12}}>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>調整原因</div>
+              <select value={editAdjForm.reason} onChange={e=>setEditAdjForm(f=>({...f,reason:e.target.value}))}
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit"}}>
+                {["盤點補正","員工漏記","遺失報廢","補登進貨","品項更正"].map(r=><option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:12}}>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>備註</div>
+              <input type="text" value={editAdjForm.note} onChange={e=>setEditAdjForm(f=>({...f,note:e.target.value}))}
+                placeholder="備註（選填）"
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+            {(editAdjModal.affectExpense||editAdjModal.lossAmt>0)&&(
+              <div style={{marginBottom:12}}>
+                <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>損耗金額（NT$）</div>
+                <input type="number" value={editAdjForm.lossAmt} onChange={e=>setEditAdjForm(f=>({...f,lossAmt:e.target.value}))}
+                  placeholder="0"
+                  style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid ${C.border}`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+              </div>
+            )}
+            <div style={{display:"flex",gap:10,marginTop:6}}>
+              <button onClick={()=>setEditAdjModal(null)} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${C.border}`,background:"transparent",color:C.textDim,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>取消</button>
+              <button onClick={handleEditAdj} style={{flex:2,padding:"11px 0",borderRadius:10,border:"none",background:`linear-gradient(135deg,#0050c8,${C.accent})`,color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✅ 儲存修改</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 庫存調整紀錄 取消確認彈窗 */}
+      {cancelAdjModal&&(
+        <div onClick={()=>setCancelAdjModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f3c",border:"1.5px solid rgba(200,50,50,0.5)",borderRadius:16,padding:20,width:"100%",maxWidth:400}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{color:"#f87171",fontWeight:800,fontSize:15}}>🚫 取消調整紀錄</div>
+              <button onClick={()=>setCancelAdjModal(null)} style={{background:"none",border:"none",color:C.textDim,fontSize:20,cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{color:C.textMid,fontSize:13,marginBottom:4}}>{cancelAdjModal.name}</div>
+            <div style={{color:C.textDim,fontSize:12,marginBottom:12}}>
+              調整量：<span style={{color:cancelAdjModal.qty>0?C.green:"#f87171",fontWeight:700}}>{cancelAdjModal.qty>0?"+":""}{cancelAdjModal.qty}</span>　
+              原因：{cancelAdjModal.reason}
+            </div>
+            <div style={{background:"rgba(200,50,50,0.1)",border:"1px solid rgba(200,50,50,0.3)",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:12,color:"#fca5a5",lineHeight:1.6}}>
+              ⚠️ 取消後此筆調整將不再計入庫存，但紀錄仍保留（標示為已取消）。
+            </div>
+            <div style={{marginBottom:14}}>
+              <div style={{color:C.textDim,fontSize:11,marginBottom:4}}>取消原因（必填）</div>
+              <input type="text" value={cancelAdjReason} onChange={e=>setCancelAdjReason(e.target.value)}
+                placeholder="請說明取消原因"
+                style={{width:"100%",boxSizing:"border-box",background:"rgba(0,32,90,0.45)",border:`1px solid rgba(200,50,50,0.4)`,borderRadius:9,color:C.text,padding:"9px 13px",fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setCancelAdjModal(null)} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${C.border}`,background:"transparent",color:C.textDim,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>返回</button>
+              <button onClick={handleCancelAdj} style={{flex:2,padding:"11px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#7f1d1d,#b91c1c)",color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>確認取消此紀錄</button>
             </div>
           </div>
         </div>
@@ -3370,7 +3500,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                 有差異 {Object.entries(stocktakeQty).filter(([skId,v])=>{
                   if(v===""||isNaN(Number(v)))return false;
                   const sk=stock[skId];if(!sk)return false;
-                  const adjOff=(stockAdj||[]).filter(a=>a.stockId===skId).reduce((s,a)=>s+a.qty,0);
+                  const adjOff=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled).reduce((s,a)=>s+a.qty,0);
                   return Number(v)!==(sk.stock+adjOff);
                 }).length} 項
               </div>
@@ -3509,7 +3639,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
           {showAdjLog&&(
             <div>
               {(stockAdj||[]).slice(0,30).map(a=>(
-                <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"9px 0",borderBottom:`1px solid ${C.border}`}}>
+                <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"9px 0",borderBottom:`1px solid ${C.border}`,opacity:a.cancelled?0.6:1}}>
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                       <span style={{color:C.text,fontSize:12,fontWeight:700}}>{a.name}</span>
@@ -3517,12 +3647,20 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                       {a.affectCost&&<span style={{fontSize:10,color:C.green}}>💰 計成本</span>}
                       {a.affectExpense&&<span style={{fontSize:10,color:C.red}}>📉 計損耗</span>}
                       {a.affectExpense&&a.lossAmt>0&&<span style={{fontSize:10,color:C.red,fontWeight:700}}>損耗金額 NT${a.lossAmt.toLocaleString()}</span>}
+                      {a.cancelled&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:"rgba(200,50,50,0.25)",color:"#f87171",fontWeight:800}}>已取消</span>}
                     </div>
                     <div style={{color:C.textDim,fontSize:11,marginTop:3}}>{a.date}{a.note&&` · ${a.note}`}</div>
+                    {a.cancelled&&a.cancelReason&&<div style={{color:"#f87171",fontSize:10,marginTop:2}}>取消原因：{a.cancelReason}</div>}
                   </div>
-                  <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
+                  <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",flexShrink:0,marginLeft:8,gap:4}}>
                     <div style={{color:a.qty>0?C.green:C.red,fontWeight:800,fontSize:15}}>{a.qty>0?"+":""}{a.qty}</div>
-                    {a.affectExpense&&a.lossAmt>0&&<div style={{color:C.red,fontSize:11,fontWeight:700,marginTop:2}}>-NT${a.lossAmt.toLocaleString()}</div>}
+                    {a.affectExpense&&a.lossAmt>0&&<div style={{color:C.red,fontSize:11,fontWeight:700}}>-NT${a.lossAmt.toLocaleString()}</div>}
+                    {!a.cancelled&&(
+                      <div style={{display:"flex",gap:4,marginTop:2}}>
+                        <button onClick={()=>openEditAdj(a)} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.border}`,background:"rgba(0,100,200,0.18)",color:C.accent,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>編輯</button>
+                        <button onClick={()=>openCancelAdj(a)} style={{padding:"2px 8px",borderRadius:6,border:"1px solid rgba(200,50,50,0.4)",background:"rgba(200,50,50,0.12)",color:"#f87171",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>取消</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
