@@ -2164,9 +2164,9 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
   const [showTransferDiffs,setShowTransferDiffs] = useState(false);
   // ── 庫存調整紀錄 編輯/取消 state ─────────────────────────────────────────
   const [editAdjModal,setEditAdjModal] = useState(null); // {record} 正在編輯的紀錄
-  const [editAdjForm,setEditAdjForm]   = useState({qty:\"\",reason:\"\",note:\"\",lossAmt:\"\"});
+  const [editAdjForm,setEditAdjForm]   = useState({qty:"",reason:"",note:"",lossAmt:""});
   const [cancelAdjModal,setCancelAdjModal] = useState(null); // {record} 正在取消的紀錄
-  const [cancelAdjReason,setCancelAdjReason] = useState(\"\");
+  const [cancelAdjReason,setCancelAdjReason] = useState("");
   const [usageModal,setUsageModal] = useState(null);
   const [diffTableModal,setDiffTableModal] = useState(false);
   const [diffAnalysisModal,setDiffAnalysisModal] = useState(null);
