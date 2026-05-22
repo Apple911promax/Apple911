@@ -1138,8 +1138,9 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders,st
             }
           });
           // 計算每個 stockId 的庫存調整淨額（正=增加，負=減少）
+          // 排除「補登進貨 + affectCost=true」：這類調整已建立 purchase 記錄，FIFO 已計入，不可再減 toDeduct（否則雙重計算）
           const adjBySid={};
-          (stockAdj||[]).filter(a=>!a.cancelled&&a.stockId).forEach(a=>{
+          (stockAdj||[]).filter(a=>!a.cancelled&&a.stockId&&!(a.reason==="補登進貨"&&a.affectCost)).forEach(a=>{
             adjBySid[a.stockId]=(adjBySid[a.stockId]||0)+(a.qty||0);
           });
           Object.entries(pursByStockId).forEach(([sid,purs])=>{
