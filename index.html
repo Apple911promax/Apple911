@@ -758,7 +758,7 @@ function Chips({options,selected,onToggle,getStyle,small}) {
 }
 
 // ─── REPAIR FORM ──────────────────────────────────────────────────────────────
-function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) {
+function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders,stockAdj}) {
   const [brand,setBrand]       = useState(editOrder?.brand||"");
   const [model,setModel]       = useState(editOrder?.model||"");
   const [modelFree,setModelFree]= useState(editOrder?.modelFree||"");
@@ -1137,6 +1137,11 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
                 pursByStockId[p.stockId].push(p);
             }
           });
+          // 計算每個 stockId 的庫存調整淨額（正=增加，負=減少）
+          const adjBySid={};
+          (stockAdj||[]).filter(a=>!a.cancelled&&a.stockId).forEach(a=>{
+            adjBySid[a.stockId]=(adjBySid[a.stockId]||0)+(a.qty||0);
+          });
           Object.entries(pursByStockId).forEach(([sid,purs])=>{
             // FIFO：日期由舊到新，同日期依 createdAt 或 id 排序
             const sorted=[...purs].sort((a,b)=>{
@@ -1146,7 +1151,8 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
               if(ca!==0) return ca;
               return (a.id||"").localeCompare(b.id||"");
             });
-            let toDeduct=(stockIdUsed[sid]||0);
+            // 正數調整等於補回庫存，可減少 FIFO 扣除量；負數調整增加扣除量
+            let toDeduct=Math.max(0,(stockIdUsed[sid]||0)-(adjBySid[sid]||0));
             sorted.forEach(p=>{
               const batchQty=Number(p.qty)||1;
               if(toDeduct>=batchQty){
@@ -1555,7 +1561,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders}) 
 }
 
 // ─── ORDERS PAGE ──────────────────────────────────────────────────────────────
-function OrdersPage({orders,setOrders,catalog,stock,purchases,pendingOrderId,onPendingConsumed}) {
+function OrdersPage({orders,setOrders,catalog,stock,purchases,pendingOrderId,onPendingConsumed,stockAdj}) {
   const [view,setView]  = useState("list");
   const [edit,setEdit]  = useState(null);
   useEffect(()=>{
@@ -1604,13 +1610,13 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases,pendingOrderId,onP
   if(view==="new") return (
     <div>
       <button onClick={()=>setView("list")} style={{color:C.accent,background:"none",border:"none",cursor:"pointer",fontSize:13,marginBottom:12,fontFamily:"inherit"}}>← 返回列表</button>
-      <RepairForm catalog={catalog} onSave={saveOrder} onCancel={()=>setView("list")} stock={stock} purchases={purchases} orders={orders}/>
+      <RepairForm catalog={catalog} onSave={saveOrder} onCancel={()=>setView("list")} stock={stock} purchases={purchases} orders={orders} stockAdj={stockAdj}/>
     </div>
   );
   if(view==="edit"&&edit) return (
     <div>
       <button onClick={()=>{setView("list");setEdit(null);}} style={{color:C.accent,background:"none",border:"none",cursor:"pointer",fontSize:13,marginBottom:12,fontFamily:"inherit"}}>← 返回列表</button>
-      <RepairForm catalog={catalog} onSave={saveOrder} onCancel={()=>{setView("list");setEdit(null);}} editOrder={edit} stock={stock} purchases={purchases} orders={orders}/>
+      <RepairForm catalog={catalog} onSave={saveOrder} onCancel={()=>{setView("list");setEdit(null);}} editOrder={edit} stock={stock} purchases={purchases} orders={orders} stockAdj={stockAdj}/>
     </div>
   );
 
@@ -6559,7 +6565,7 @@ function App() {
 
       {/* Content */}
       <div style={{padding:"16px 14px 32px",position:"relative",zIndex:1}}>
-        {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases} pendingOrderId={pendingOrderId} onPendingConsumed={()=>setPendingOrderId(null)}/>}
+        {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases} pendingOrderId={pendingOrderId} onPendingConsumed={()=>setPendingOrderId(null)} stockAdj={stockAdj}/>}
         {page==="purchases"&&<PurchasesPage purchases={purchases} setPurchases={setPur} catalog={catalog} stock={stock} orders={orders}/>}
         {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} expenses={expenses} setExpenses={e=>{setExp(e);save(SK.expenses,e);}} stockAdj={stockAdj} setStockAdj={a=>{setStockAdj(a);save(SK.stockAdj,a);}} transferDiffs={transferDiffs} setTransferDiffs={a=>{setTransferDiffs(a);save(SK.transferDiffs,a);}} orders={orders} setOrders={o=>{setOrders(o);save(SK.orders,o);}} onJumpToOrder={id=>{setPendingOrderId(id);setPage("orders");}}/>}
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
