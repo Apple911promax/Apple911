@@ -2267,7 +2267,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
       // 取得目前顯示庫存（含舊調整）
       const sk=stock[skId];
       if(!sk)return;
-      const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled).reduce((s,a)=>s+a.qty,0);
+      const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled&&!(a.reason==="補登進貨"&&a.affectCost)).reduce((s,a)=>s+a.qty,0);
       const currentQty=sk.stock+adjOffset;
       const diff=actual-currentQty;
       if(diff===0)return;
@@ -2319,7 +2319,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
       if(v===""||isNaN(Number(v)))return;
       const sk=stock[skId];
       if(!sk)return;
-      const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled).reduce((s,a)=>s+a.qty,0);
+      const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled&&!(a.reason==="補登進貨"&&a.affectCost)).reduce((s,a)=>s+a.qty,0);
       const currentQty=sk.stock+adjOffset;
       const diff=Number(v)-currentQty;
       if(diff===0)return;
@@ -2933,7 +2933,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                                         const sk=stock[catObj.cat+"__"+bObj.brand+"__"+m]||{totalIn:0,totalUsed:0,stock:0};
                                         const skId=getStockId(catalog,catObj.cat,bObj.brand,m);
                                         // 計算庫存調整偏移量
-                                        const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled).reduce((s,a)=>s+a.qty,0);
+                                        const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled&&!(a.reason==="補登進貨"&&a.affectCost)).reduce((s,a)=>s+a.qty,0);
                                         const displayStock=sk.stock+adjOffset;
                                         const zero=displayStock<=0&&sk.totalIn>0;
                                         const low=!zero&&displayStock<=2&&sk.totalIn>0;
@@ -3103,7 +3103,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
               const tfFromModels=tfFrom.series?(tfFromSeriesObj.find(s=>s.name===tfFrom.series)?.models||[]):[];
               const fromSid=tfFrom.model?getStockId(catalog,tfFrom.cat,tfFrom.brand,tfFrom.model):"";
               const fromSk=fromSid?stock[fromSid]:null;
-              const fromAdj=fromSid?(stockAdj||[]).filter(a=>a.stockId===fromSid&&!a.cancelled).reduce((s,a)=>s+a.qty,0):0;
+              const fromAdj=fromSid?(stockAdj||[]).filter(a=>a.stockId===fromSid&&!a.cancelled&&!(a.reason==="補登進貨"&&a.affectCost)).reduce((s,a)=>s+a.qty,0):0;
               const fromCurQty=fromSk?(fromSk.stock||0)+fromAdj:null;
               return(
                 <div style={{marginBottom:12}}>
@@ -3245,7 +3245,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
         function togDt(k){setDiffTableCol(p=>({...p,[k]:!p[k]}));}
         function skDiff(skId){
           const sk=stock[skId]||{stock:0};
-          const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled).reduce((s,a)=>s+a.qty,0);
+          const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled&&!(a.reason==="補登進貨"&&a.affectCost)).reduce((s,a)=>s+a.qty,0);
           const sysQty=sk.stock+adjOffset;
           const actVal=diffTableQty[skId]||"";
           if(actVal===""||isNaN(Number(actVal)))return null;
@@ -3313,7 +3313,7 @@ function InventoryPage({stock,catalog,setCatalog,purchases,setPurchases,expenses
                                 const sharedInSeries=(sObj.models||[]).filter(m2=>getStockId(catalog,cObj.cat,bObj.brand,m2)===skId);
                                 const label=sharedInSeries.length>1?sharedInSeries.join(" / ")+" （通用）":m;
                                 const sk=stock[skId]||{stock:0};
-                                const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled).reduce((s,a)=>s+a.qty,0);
+                                const adjOffset=(stockAdj||[]).filter(a=>a.stockId===skId&&!a.cancelled&&!(a.reason==="補登進貨"&&a.affectCost)).reduce((s,a)=>s+a.qty,0);
                                 const sysQty=sk.stock+adjOffset;
                                 const actVal=diffTableQty[skId]||"";
                                 const diff=actVal!==""&&!isNaN(Number(actVal))?Number(actVal)-sysQty:null;
