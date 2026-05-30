@@ -129,6 +129,7 @@ function loadUsedPhones() {
 /** 寫入所有二手機資料 */
 function saveUsedPhones(list) {
   try { localStorage.setItem(UP_KEY, JSON.stringify(list)); } catch(e) {}
+  cloudSave(UP_KEY, list);
 }
 
 /**
@@ -5514,6 +5515,7 @@ function QuotePage({catalog, stock}) {
   function handleCancelEdit() { setDraftData(null); setEditMode(false); }
   function handleSaveSeries() {
     try { localStorage.setItem(QS_KEY, JSON.stringify(draftData)); } catch{}
+    cloudSave(QS_KEY, draftData);
     setSeriesData(draftData); setDraftData(null); setEditMode(false);
   }
 
@@ -6565,16 +6567,24 @@ function App() {
     async function syncFromCloud() {
       setSyncing(true);
       try {
-        const [o,p,e,cat] = await Promise.all([
+        const [o,p,e,cat,sa,td,up,qs] = await Promise.all([
           cloudLoad(SK.orders,[]),
           cloudLoad(SK.purchases,[]),
           cloudLoad(SK.expenses,{}),
           cloudLoad(SK.catalog,null),
+          cloudLoad(SK.stockAdj,[]),
+          cloudLoad(SK.transferDiffs,[]),
+          cloudLoad(UP_KEY,[]),
+          cloudLoad("apple911_quoteSeriesData",null),
         ]);
-        setOrders(o||[]);    localSave(SK.orders,o||[]);
-        setPur(p||[]);       localSave(SK.purchases,p||[]);
-        setExp(e||{});       localSave(SK.expenses,e||{});
+        setOrders(o||[]);          localSave(SK.orders,o||[]);
+        setPur(p||[]);             localSave(SK.purchases,p||[]);
+        setExp(e||{});             localSave(SK.expenses,e||{});
         setCat(mergeCatalog(cat));
+        if(sa?.length) { setStockAdj(sa);        localSave(SK.stockAdj,sa); }
+        if(td?.length) { setTransferDiffs(td);   localSave(SK.transferDiffs,td); }
+        if(up?.length) { try { localStorage.setItem(UP_KEY, JSON.stringify(up)); } catch{} }
+        if(qs)         { try { localStorage.setItem("apple911_quoteSeriesData", JSON.stringify(qs)); } catch{} }
         setSyncOk(true);
         setTimeout(()=>setSyncOk(false),2000);
       } catch(e){ console.warn("sync error",e); }
