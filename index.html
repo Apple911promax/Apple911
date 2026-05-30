@@ -1297,6 +1297,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders,st
           // FIFO 結果：只顯示仍有可用數量的批次，按日期由舊到新
           // 雙軌過濾：FIFO（stockId 維度）AND purId 維度 兩者都檢查
           const results=(purchases||[]).filter(p=>{
+            if(p.selfUse) return false;
             // purId 維度：已用次數 >= 進貨數量 → 排除
             if((usageCount[p.id]||0)>=(p.qty||1)) return false;
             // FIFO 維度：若已算出 FIFO 剩餘且為 0 → 排除
@@ -6381,9 +6382,87 @@ function UsedPhonesPage({orders}) {
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
+function UntrackedPage({purchases,setPurchases,orders}) {
+  const usedPurIds = useMemo(()=>{
+    const s=new Set();
+    (orders||[]).forEach(o=>(o.items||[]).forEach(i=>{ if(i.purId) s.add(i.purId); }));
+    return s;
+  },[orders]);
+
+  const unused = useMemo(()=>
+    (purchases||[]).filter(p=>!p.selfUse&&!usedPurIds.has(p.id))
+      .sort((a,b)=>(b.date||"").localeCompare(a.date||""))
+  ,[purchases,usedPurIds]);
+
+  const selfUsed = useMemo(()=>
+    (purchases||[]).filter(p=>p.selfUse)
+      .sort((a,b)=>(b.selfUseDate||b.date||"").localeCompare(a.selfUseDate||a.date||""))
+  ,[purchases]);
+
+  function markSelfUse(id){
+    const next=purchases.map(p=>p.id===id?{...p,selfUse:true,selfUseDate:today()}:p);
+    setPurchases(next);
+  }
+  function cancelSelfUse(id){
+    const next=purchases.map(p=>p.id===id?{...p,selfUse:false,selfUseDate:undefined}:p);
+    setPurchases(next);
+  }
+
+  function PurRow({p,isSelfUsed}){
+    return(
+      <Card style={{marginBottom:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{color:C.text,fontWeight:700,fontSize:13}}>{p.itemName||p.itemCat||"—"}</div>
+            {(p.itemBrand||p.itemVariant)&&
+              <div style={{color:C.accent,fontSize:11,marginTop:2}}>{[p.itemBrand,p.itemVariant].filter(Boolean).join(" ")}</div>
+            }
+            <div style={{display:"flex",gap:8,marginTop:4,flexWrap:"wrap"}}>
+              <span style={{color:C.textDim,fontSize:11}}>{p.date||"—"}</span>
+              {(p.vendorName||p.vendor)&&<span style={{color:C.orange,fontSize:11}}>{p.vendorName||p.vendor}</span>}
+              <span style={{color:C.green,fontSize:11,fontWeight:700}}>{fmt(p.amount)} × {p.qty||1}</span>
+            </div>
+            {isSelfUsed&&p.selfUseDate&&
+              <div style={{color:C.textDim,fontSize:10,marginTop:2}}>自用：{p.selfUseDate}</div>
+            }
+          </div>
+          <div style={{flexShrink:0}}>
+            {isSelfUsed
+              ?<Btn v="ghost" sm onClick={()=>cancelSelfUse(p.id)}>取消</Btn>
+              :<Btn sm onClick={()=>markSelfUse(p.id)}>🏠 自用</Btn>
+            }
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  return(
+    <div>
+      <div style={{marginBottom:10}}>
+        <div style={{color:C.accent,fontWeight:800,fontSize:14,marginBottom:2}}>📋 未入庫品項</div>
+        <div style={{color:C.textDim,fontSize:11}}>已進貨但未連結工單、也未標記自用的品項</div>
+      </div>
+
+      <div style={{color:C.accent,fontWeight:800,fontSize:12,marginBottom:6}}>📦 未使用 · {unused.length} 筆</div>
+      {unused.length===0
+        ?<Card><div style={{color:C.textDim,textAlign:"center",padding:16,fontSize:13}}>沒有未使用品項</div></Card>
+        :unused.map(p=><PurRow key={p.id} p={p} isSelfUsed={false}/>)
+      }
+
+      <div style={{color:C.orange,fontWeight:800,fontSize:12,margin:"16px 0 6px"}}>🏠 自用 · {selfUsed.length} 筆</div>
+      {selfUsed.length===0
+        ?<Card><div style={{color:C.textDim,textAlign:"center",padding:16,fontSize:13}}>尚無自用品項</div></Card>
+        :selfUsed.map(p=><PurRow key={p.id} p={p} isSelfUsed={true}/>)
+      }
+    </div>
+  );
+}
+
 const NAV_ALL   = [
   {id:"orders",   icon:"🔧", label:"工單"},
   {id:"purchases",icon:"📦", label:"進貨"},
+  {id:"untracked",icon:"📋", label:"未入庫品項"},
   {id:"inventory",icon:"🗃️", label:"庫存"},
   {id:"expenses", icon:"📋", label:"月結算"},
   {id:"reports",  icon:"📊", label:"報表"},
@@ -6569,6 +6648,7 @@ function App() {
       <div style={{padding:"16px 14px 32px",position:"relative",zIndex:1}}>
         {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases} pendingOrderId={pendingOrderId} onPendingConsumed={()=>setPendingOrderId(null)} stockAdj={stockAdj}/>}
         {page==="purchases"&&<PurchasesPage purchases={purchases} setPurchases={setPur} catalog={catalog} stock={stock} orders={orders}/>}
+        {page==="untracked"&&<UntrackedPage purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} orders={orders}/>}
         {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} expenses={expenses} setExpenses={e=>{setExp(e);save(SK.expenses,e);}} stockAdj={stockAdj} setStockAdj={a=>{setStockAdj(a);save(SK.stockAdj,a);}} transferDiffs={transferDiffs} setTransferDiffs={a=>{setTransferDiffs(a);save(SK.transferDiffs,a);}} orders={orders} setOrders={o=>{setOrders(o);save(SK.orders,o);}} onJumpToOrder={id=>{setPendingOrderId(id);setPage("orders");}}/>}
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
         {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses} transferDiffs={transferDiffs}/>}
