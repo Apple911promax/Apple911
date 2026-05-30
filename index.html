@@ -6383,14 +6383,9 @@ function UsedPhonesPage({orders}) {
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function hasInventoryTracking(catalog, p) {
+  if(!p.itemCat) return false;
   const cats = Array.isArray(catalog?.purchaseCategories) ? catalog.purchaseCategories : [];
-  const catObj = cats.find(c=>c.cat===p.itemCat);
-  if(!catObj) return false;
-  const brandObj = catObj.brands?.find(b=>b.brand===p.itemBrand);
-  if(!brandObj) return false;
-  const serObj = brandObj.series?.find(s=>s.models?.includes(p.itemVariant));
-  if(!serObj) return false;
-  return !!((serObj.stockIds||{})[p.itemVariant]);
+  return cats.some(c=>c.cat===p.itemCat);
 }
 
 function UntrackedPage({purchases,setPurchases,orders,catalog}) {
