@@ -4008,133 +4008,133 @@ function MonthlyReportModal({y,m,orders,purchases,expenses,onClose}) {
   const mRev=monthOrders.reduce((a,o)=>a+o.totalRevenue,0);
   const totPur=monthPurchases.reduce((a,p)=>a+p.amount,0);
   const manE=fixedItems.reduce((a,i)=>a+i.amount,0);
-  const totalLineFee=monthOrders.reduce((a,o)=>{
+  const {totalFee,totalTax}=monthOrders.reduce((a,o)=>{
     const isLP=o.payments?.some(p=>p.toLowerCase().includes("line"));
     if(!isLP) return a;
     const fee=o.linePayFee!==undefined?o.linePayFee:Math.round((o.totalRevenue||0)*0.03);
     const tax=o.linePayTax!==undefined?o.linePayTax:Math.round(fee*0.05);
-    return a+fee+tax;
-  },0);
-  const netProfit=mRev-totPur-manE-totalLineFee;
+    return {totalFee:a.totalFee+fee, totalTax:a.totalTax+tax};
+  },{totalFee:0,totalTax:0});
+  const netProfit=mRev-totPur-manE-totalFee-totalTax;
 
-  const RS={background:"#fff",color:"#111",fontFamily:"sans-serif",fontSize:13,lineHeight:1.6};
+  const bg=C.bg; const card=C.card; const border=C.border; const borderHi=C.borderHi;
+  const tx=C.text; const txd=C.textDim; const txm=C.textMid;
   const RT={borderCollapse:"collapse",width:"100%",marginBottom:16,fontSize:12};
-  const RTH={background:"#f0f0f0",padding:"6px 8px",border:"1px solid #ccc",textAlign:"left",fontWeight:700};
-  const RTD={padding:"5px 8px",border:"1px solid #ddd",verticalAlign:"top"};
+  const RTH={background:"rgba(0,50,120,0.5)",padding:"6px 8px",border:`1px solid ${borderHi}`,textAlign:"left",fontWeight:700,color:C.accent};
+  const RTD={padding:"5px 8px",border:`1px solid ${border}`,verticalAlign:"top",color:tx};
+  const sec=(label)=><div style={{color:C.accent,fontWeight:800,fontSize:14,margin:"18px 0 8px",borderBottom:`1px solid ${borderHi}`,paddingBottom:4}}>{label}</div>;
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,overflowY:"auto"}} className="print-modal">
+    <div style={{position:"fixed",inset:0,background:bg,zIndex:9999,overflowY:"auto"}} className="print-modal">
       <style>{`
         @media print {
           body > * { display: none !important; }
-          .print-modal { position: static !important; background: #fff !important; display: block !important; }
+          .print-modal { position: static !important; background: ${bg} !important; display: block !important; }
           .no-print { display: none !important; }
-          .print-modal * { color: #000 !important; background: transparent !important; }
         }
+        @media screen { .print-modal { display: block; } }
       `}</style>
       <div style={{maxWidth:760,margin:"0 auto",padding:"20px 16px"}}>
-        {/* 操作列 */}
         <div className="no-print" style={{display:"flex",gap:8,marginBottom:12,justifyContent:"flex-end"}}>
-          <button onClick={()=>window.print()} style={{padding:"8px 18px",borderRadius:8,border:"none",background:"#0050ee",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🖨️ 列印 / 存 PDF</button>
-          <button onClick={onClose} style={{padding:"8px 18px",borderRadius:8,border:"none",background:"#444",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>✕ 關閉</button>
+          <button onClick={()=>window.print()} style={{padding:"8px 18px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${C.accent2},${C.accent})`,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>🖨️ 列印 / 存 PDF</button>
+          <button onClick={onClose} style={{padding:"8px 18px",borderRadius:8,border:`1px solid ${border}`,background:"rgba(255,255,255,0.07)",color:tx,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>✕ 關閉</button>
         </div>
 
-        {/* 報表內容 */}
-        <div style={RS}>
-          {/* 標題 */}
-          <div style={{textAlign:"center",marginBottom:20,borderBottom:"2px solid #000",paddingBottom:12}}>
-            <div style={{fontSize:20,fontWeight:900}}>Apple 911 維修管理</div>
-            <div style={{fontSize:15,fontWeight:700,marginTop:4}}>{y}年{m}月 月結報表</div>
-          </div>
+        {/* 標題 */}
+        <div style={{textAlign:"center",marginBottom:20,borderBottom:`2px solid ${borderHi}`,paddingBottom:14}}>
+          <div style={{fontSize:20,fontWeight:900,color:C.accent}}>Apple 911 維修管理</div>
+          <div style={{fontSize:15,fontWeight:700,marginTop:4,color:tx}}>{y}年{m}月 月結報表</div>
+        </div>
 
-          {/* 摘要 */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8,marginBottom:20,border:"1px solid #ccc",borderRadius:6,padding:12}}>
-            <div><span style={{color:"#555"}}>工單筆數</span><br/><strong>{monthOrders.length} 筆</strong></div>
-            <div><span style={{color:"#555"}}>營業額</span><br/><strong>NT$ {mRev.toLocaleString()}</strong></div>
-            <div><span style={{color:"#555"}}>進貨成本</span><br/><strong>NT$ {totPur.toLocaleString()}</strong></div>
-            <div><span style={{color:netProfit>=0?"#006600":"#cc0000"}}>本月{netProfit>=0?"盈餘":"虧損"}</span><br/><strong style={{color:netProfit>=0?"#006600":"#cc0000"}}>{netProfit>=0?"+":""}NT$ {netProfit.toLocaleString()}</strong></div>
-          </div>
+        {/* 摘要 */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8,marginBottom:8}}>
+          {[["工單筆數",`${monthOrders.length} 筆`,tx],["營業額",`NT$ ${mRev.toLocaleString()}`,C.green],["進貨成本",`NT$ ${totPur.toLocaleString()}`,C.orange],["本月"+(netProfit>=0?"盈餘":"虧損"),(netProfit>=0?"+":"")+`NT$ ${netProfit.toLocaleString()}`,netProfit>=0?C.green:C.red]].map(([l,v,c])=>(
+            <div key={l} style={{background:card,border:`1px solid ${border}`,borderRadius:10,padding:"10px 14px"}}>
+              <div style={{color:txd,fontSize:11,marginBottom:3}}>{l}</div>
+              <div style={{color:c,fontWeight:800,fontSize:15}}>{v}</div>
+            </div>
+          ))}
+        </div>
 
-          {/* 工單記錄 */}
-          <div style={{fontWeight:800,fontSize:14,marginBottom:8,borderBottom:"1px solid #000"}}>工單記錄（{monthOrders.length} 筆）</div>
-          {monthOrders.length===0
-            ?<div style={{color:"#888",marginBottom:16}}>本月無工單記錄</div>
-            :monthOrders.map(o=>{
-              const isLP=o.payments?.some(p=>p.toLowerCase().includes("line"));
-              const fee=isLP?(o.linePayFee!==undefined?o.linePayFee:Math.round((o.totalRevenue||0)*0.03)):0;
-              const tax=isLP?(o.linePayTax!==undefined?o.linePayTax:Math.round(fee*0.05)):0;
-              const profit=(o.totalRevenue||0)-(o.totalCost||0)-fee-tax;
-              return(
-                <div key={o.id} style={{marginBottom:14,border:"1px solid #ddd",borderRadius:6,padding:"10px 12px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:4,marginBottom:6}}>
-                    <strong>{o.date}　{o.brandName||""} {o.modelName||o.modelFree||"（無型號）"}</strong>
-                    <span style={{color:"#444"}}>{o.payments?.join("／")||"—"}</span>
-                  </div>
-                  {/* 維修項目 */}
-                  <table style={RT}>
-                    <thead><tr><th style={RTH}>維修項目</th><th style={{...RTH,width:60,textAlign:"right"}}>成本</th><th style={{...RTH,width:60,textAlign:"right"}}>數量</th></tr></thead>
-                    <tbody>
-                      {(o.items||[]).map(i=><tr key={i.id}><td style={RTD}>{i.name||"—"}</td><td style={{...RTD,textAlign:"right"}}>{i.cost?`NT$ ${i.cost}`:"—"}</td><td style={{...RTD,textAlign:"right"}}>{i.qty||1}</td></tr>)}
-                    </tbody>
-                  </table>
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#444"}}>
-                    <span>廠商：{o.vendors?.join("、")||"—"}</span>
-                    <span>收款 <strong>NT$ {(o.totalRevenue||0).toLocaleString()}</strong>　利潤 <strong style={{color:profit>=0?"#006600":"#cc0000"}}>{profit>=0?"+":""}NT$ {profit.toLocaleString()}</strong></span>
-                  </div>
-                  {o.note&&<div style={{marginTop:6,fontSize:11,color:"#555",borderTop:"1px solid #eee",paddingTop:6}}>備註：{o.note}</div>}
+        {/* 工單記錄 */}
+        {sec(`工單記錄（${monthOrders.length} 筆）`)}
+        {monthOrders.length===0
+          ?<div style={{color:txd,marginBottom:16}}>本月無工單記錄</div>
+          :monthOrders.map(o=>{
+            const isLP=o.payments?.some(p=>p.toLowerCase().includes("line"));
+            const fee=isLP?(o.linePayFee!==undefined?o.linePayFee:Math.round((o.totalRevenue||0)*0.03)):0;
+            const tax=isLP?(o.linePayTax!==undefined?o.linePayTax:Math.round(fee*0.05)):0;
+            const profit=(o.totalRevenue||0)-(o.totalCost||0)-fee-tax;
+            return(
+              <div key={o.id} style={{marginBottom:12,background:card,border:`1px solid ${border}`,borderRadius:10,padding:"10px 14px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                  <span style={{color:C.accent,fontWeight:700,fontSize:13}}>{o.date}　{o.brandName||""} {o.modelName||o.modelFree||"（無型號）"}</span>
+                  <span style={{color:txm,fontSize:12}}>{o.payments?.join("／")||"—"}</span>
                 </div>
-              );
-            })
-          }
+                <table style={RT}>
+                  <thead><tr><th style={RTH}>維修項目</th><th style={{...RTH,width:70,textAlign:"right"}}>成本</th><th style={{...RTH,width:50,textAlign:"right"}}>數量</th></tr></thead>
+                  <tbody>
+                    {(o.items||[]).map(i=><tr key={i.id}><td style={RTD}>{i.name||"—"}</td><td style={{...RTD,textAlign:"right",color:C.orange}}>{i.cost?`NT$ ${i.cost}`:"—"}</td><td style={{...RTD,textAlign:"right"}}>{i.qty||1}</td></tr>)}
+                  </tbody>
+                </table>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,flexWrap:"wrap",gap:4}}>
+                  <span style={{color:txm}}>廠商：{o.vendors?.join("、")||"—"}</span>
+                  <span>收款 <span style={{color:C.accent,fontWeight:700}}>NT$ {(o.totalRevenue||0).toLocaleString()}</span>　利潤 <span style={{color:profit>=0?C.green:C.red,fontWeight:700}}>{profit>=0?"+":""}NT$ {profit.toLocaleString()}</span></span>
+                </div>
+                {(fee>0||tax>0)&&<div style={{fontSize:11,color:txd,marginTop:4}}>Line Pay 手續費 NT$ {fee} ／ 營業稅 NT$ {tax}</div>}
+                {o.note&&<div style={{marginTop:6,fontSize:11,color:txd,borderTop:`1px solid ${border}`,paddingTop:6}}>備註：{o.note}</div>}
+              </div>
+            );
+          })
+        }
 
-          {/* 進貨記錄 */}
-          <div style={{fontWeight:800,fontSize:14,marginBottom:8,borderBottom:"1px solid #000",marginTop:8}}>進貨記錄（{monthPurchases.length} 筆）</div>
-          {monthPurchases.length===0
-            ?<div style={{color:"#888",marginBottom:16}}>本月無進貨記錄</div>
-            :<table style={RT}>
-              <thead><tr><th style={RTH}>日期</th><th style={RTH}>品項</th><th style={RTH}>廠商</th><th style={{...RTH,textAlign:"right"}}>金額</th></tr></thead>
-              <tbody>
-                {monthPurchases.map(p=><tr key={p.id}>
-                  <td style={RTD}>{p.date}</td>
-                  <td style={RTD}>{[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join(" ")}</td>
-                  <td style={RTD}>{p.vendorName||p.vendor||"—"}</td>
-                  <td style={{...RTD,textAlign:"right"}}>NT$ {(p.amount||0).toLocaleString()} × {p.qty||1}</td>
-                </tr>)}
-                <tr><td colSpan={3} style={{...RTD,fontWeight:700,textAlign:"right"}}>進貨合計</td><td style={{...RTD,fontWeight:700,textAlign:"right"}}>NT$ {totPur.toLocaleString()}</td></tr>
-              </tbody>
-            </table>
-          }
-
-          {/* 固定支出 */}
-          <div style={{fontWeight:800,fontSize:14,marginBottom:8,borderBottom:"1px solid #000",marginTop:8}}>固定支出</div>
-          {fixedItems.length===0
-            ?<div style={{color:"#888",marginBottom:16}}>本月無固定支出</div>
-            :<table style={RT}>
-              <thead><tr><th style={RTH}>項目</th><th style={{...RTH,textAlign:"right"}}>金額</th></tr></thead>
-              <tbody>
-                {fixedItems.map(i=><tr key={i.id}><td style={RTD}>{i.label||i.name}</td><td style={{...RTD,textAlign:"right"}}>NT$ {i.amount.toLocaleString()}</td></tr>)}
-                <tr><td style={{...RTD,fontWeight:700,textAlign:"right"}}>合計</td><td style={{...RTD,fontWeight:700,textAlign:"right"}}>NT$ {manE.toLocaleString()}</td></tr>
-              </tbody>
-            </table>
-          }
-
-          {/* 損益計算 */}
-          <div style={{fontWeight:800,fontSize:14,marginBottom:8,borderBottom:"1px solid #000",marginTop:8}}>本月損益</div>
-          <table style={{...RT,maxWidth:360}}>
+        {/* 進貨記錄 */}
+        {sec(`進貨記錄（${monthPurchases.length} 筆）`)}
+        {monthPurchases.length===0
+          ?<div style={{color:txd,marginBottom:16}}>本月無進貨記錄</div>
+          :<table style={RT}>
+            <thead><tr><th style={RTH}>日期</th><th style={RTH}>品項</th><th style={RTH}>廠商</th><th style={{...RTH,textAlign:"right"}}>金額</th></tr></thead>
             <tbody>
-              <tr><td style={RTD}>營業額</td><td style={{...RTD,textAlign:"right"}}>NT$ {mRev.toLocaleString()}</td></tr>
-              <tr><td style={RTD}>− 進貨成本</td><td style={{...RTD,textAlign:"right",color:"#c00"}}>− NT$ {totPur.toLocaleString()}</td></tr>
-              <tr><td style={RTD}>− 固定支出</td><td style={{...RTD,textAlign:"right",color:"#c00"}}>− NT$ {manE.toLocaleString()}</td></tr>
-              {totalLineFee>0&&<tr><td style={RTD}>− Line Pay 手續費</td><td style={{...RTD,textAlign:"right",color:"#c00"}}>− NT$ {totalLineFee.toLocaleString()}</td></tr>}
-              <tr style={{borderTop:"2px solid #000"}}>
-                <td style={{...RTD,fontWeight:900,fontSize:14,color:netProfit>=0?"#006600":"#cc0000"}}>{netProfit>=0?"本月盈餘":"本月虧損"}</td>
-                <td style={{...RTD,fontWeight:900,fontSize:14,textAlign:"right",color:netProfit>=0?"#006600":"#cc0000"}}>{netProfit>=0?"+":""}NT$ {netProfit.toLocaleString()}</td>
-              </tr>
+              {monthPurchases.map(p=><tr key={p.id}>
+                <td style={RTD}>{p.date}</td>
+                <td style={RTD}>{[p.itemName||p.itemCat,p.itemBrand,p.itemVariant].filter(Boolean).join(" ")}</td>
+                <td style={RTD}>{p.vendorName||p.vendor||"—"}</td>
+                <td style={{...RTD,textAlign:"right",color:C.orange}}>NT$ {(p.amount||0).toLocaleString()} × {p.qty||1}</td>
+              </tr>)}
+              <tr><td colSpan={3} style={{...RTD,fontWeight:700,textAlign:"right",color:tx}}>進貨合計</td><td style={{...RTD,fontWeight:700,textAlign:"right",color:C.orange}}>NT$ {totPur.toLocaleString()}</td></tr>
             </tbody>
           </table>
+        }
 
-          <div style={{textAlign:"right",marginTop:20,fontSize:11,color:"#888"}}>列印時間：{new Date().toLocaleString("zh-TW")}</div>
+        {/* 固定支出 */}
+        {sec("固定支出")}
+        {fixedItems.length===0
+          ?<div style={{color:txd,marginBottom:16}}>本月無固定支出</div>
+          :<table style={RT}>
+            <thead><tr><th style={RTH}>項目</th><th style={{...RTH,textAlign:"right"}}>金額</th></tr></thead>
+            <tbody>
+              {fixedItems.map(i=><tr key={i.id}><td style={RTD}>{i.label||i.name}</td><td style={{...RTD,textAlign:"right",color:C.orange}}>NT$ {i.amount.toLocaleString()}</td></tr>)}
+              <tr><td style={{...RTD,fontWeight:700,textAlign:"right",color:tx}}>合計</td><td style={{...RTD,fontWeight:700,textAlign:"right",color:C.orange}}>NT$ {manE.toLocaleString()}</td></tr>
+            </tbody>
+          </table>
+        }
+
+        {/* 損益計算 */}
+        {sec("本月損益")}
+        <div style={{background:card,border:`1px solid ${border}`,borderRadius:10,padding:"12px 16px",maxWidth:380}}>
+          {[["營業額",mRev,C.green,false],["− 進貨成本",totPur,C.orange,true],["− 固定支出",manE,C.orange,true],...(totalFee>0?[["− Line Pay 手續費",totalFee,C.red,true]]:=[]),...(totalTax>0?[["− 營業稅",totalTax,C.red,true]]:[])].map(([l,v,c,neg])=>(
+            <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${border}`}}>
+              <span style={{color:txm,fontSize:13}}>{l}</span>
+              <span style={{color:c,fontWeight:700}}>{neg?"− ":""}NT$ {v.toLocaleString()}</span>
+            </div>
+          ))}
+          <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0 4px",borderTop:`1.5px solid ${borderHi}`,marginTop:4}}>
+            <span style={{color:netProfit>=0?C.green:C.red,fontWeight:900,fontSize:15}}>{"本月"+(netProfit>=0?"盈餘":"虧損")}</span>
+            <span style={{color:netProfit>=0?C.green:C.red,fontWeight:900,fontSize:17}}>{netProfit>=0?"+":""}NT$ {netProfit.toLocaleString()}</span>
+          </div>
         </div>
+
+        <div style={{textAlign:"right",marginTop:20,fontSize:11,color:txd}}>列印時間：{new Date().toLocaleString("zh-TW")}</div>
       </div>
     </div>
   );
