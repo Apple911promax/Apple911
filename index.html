@@ -6583,8 +6583,19 @@ function App() {
         setCat(mergeCatalog(cat));
         if(sa?.length) { setStockAdj(sa);        localSave(SK.stockAdj,sa); }
         if(td?.length) { setTransferDiffs(td);   localSave(SK.transferDiffs,td); }
-        if(up?.length) { try { localStorage.setItem(UP_KEY, JSON.stringify(up)); } catch{} }
-        if(qs)         { try { localStorage.setItem("apple911_quoteSeriesData", JSON.stringify(qs)); } catch{} }
+        if(up?.length) {
+          try { localStorage.setItem(UP_KEY, JSON.stringify(up)); } catch{}
+        } else {
+          // Firebase 沒資料但本機有 → 自動推上去（一次性遷移）
+          const local = loadUsedPhones();
+          if(local.length) cloudSave(UP_KEY, local);
+        }
+        if(qs) {
+          try { localStorage.setItem("apple911_quoteSeriesData", JSON.stringify(qs)); } catch{}
+        } else {
+          // 報價同樣自動遷移
+          try { const localQs = localStorage.getItem("apple911_quoteSeriesData"); if(localQs) cloudSave("apple911_quoteSeriesData", JSON.parse(localQs)); } catch{}
+        }
         setSyncOk(true);
         setTimeout(()=>setSyncOk(false),2000);
       } catch(e){ console.warn("sync error",e); }
