@@ -6394,6 +6394,7 @@ function hasInventoryTracking(catalog, p) {
 }
 
 function UntrackedPage({purchases,setPurchases,orders,catalog}) {
+  const [section,setSection] = useState("unused");
   const usedPurIds = useMemo(()=>{
     const s=new Set();
     (orders||[]).forEach(o=>(o.items||[]).forEach(i=>{ if(i.purId) s.add(i.purId); }));
@@ -6455,17 +6456,25 @@ function UntrackedPage({purchases,setPurchases,orders,catalog}) {
         <div style={{color:C.textDim,fontSize:11}}>已進貨但未連結工單、也未標記自用的品項</div>
       </div>
 
-      <div style={{color:C.accent,fontWeight:800,fontSize:12,marginBottom:6}}>📦 未使用 · {unused.length} 筆</div>
-      {unused.length===0
-        ?<Card><div style={{color:C.textDim,textAlign:"center",padding:16,fontSize:13}}>沒有未使用品項</div></Card>
-        :unused.map(p=><PurRow key={p.id} p={p} isSelfUsed={false}/>)
-      }
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        <button onClick={()=>setSection("unused")} style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:section==="unused"?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(255,255,255,0.07)",color:section==="unused"?"#fff":C.textMid}}>
+          📦 未使用 · {unused.length}
+        </button>
+        <button onClick={()=>setSection("selfused")} style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:section==="selfused"?`linear-gradient(135deg,${C.accent2},${C.accent})`:"rgba(255,255,255,0.07)",color:section==="selfused"?"#fff":C.textMid}}>
+          🏠 自用 · {selfUsed.length}
+        </button>
+      </div>
 
-      <div style={{color:C.orange,fontWeight:800,fontSize:12,margin:"16px 0 6px"}}>🏠 自用 · {selfUsed.length} 筆</div>
-      {selfUsed.length===0
-        ?<Card><div style={{color:C.textDim,textAlign:"center",padding:16,fontSize:13}}>尚無自用品項</div></Card>
-        :selfUsed.map(p=><PurRow key={p.id} p={p} isSelfUsed={true}/>)
-      }
+      {section==="unused"&&(
+        unused.length===0
+          ?<Card><div style={{color:C.textDim,textAlign:"center",padding:16,fontSize:13}}>沒有未使用品項</div></Card>
+          :unused.map(p=><PurRow key={p.id} p={p} isSelfUsed={false}/>)
+      )}
+      {section==="selfused"&&(
+        selfUsed.length===0
+          ?<Card><div style={{color:C.textDim,textAlign:"center",padding:16,fontSize:13}}>尚無自用品項</div></Card>
+          :selfUsed.map(p=><PurRow key={p.id} p={p} isSelfUsed={true}/>)
+      )}
     </div>
   );
 }
