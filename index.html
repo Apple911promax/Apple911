@@ -1594,8 +1594,8 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases,pendingOrderId,onP
   },[orders,mk]);
 
   const filtered=useMemo(()=>orders.filter(o=>{
-    const mok=o.date?.slice(0,7)===mk;
-    const dok=fd==="全部"||o.date?.slice(0,10)===fd;
+    const mok=q?true:o.date?.slice(0,7)===mk;
+    const dok=q?true:(fd==="全部"||o.date?.slice(0,10)===fd);
     const sok=!q||[o.brandName,o.modelName,o.modelFree,o.customer,...(o.items||[]).map(i=>i.name)].join(" ").includes(q);
     return mok&&dok&&sok;
   }),[orders,mk,fd,q]);
