@@ -6382,7 +6382,18 @@ function UsedPhonesPage({orders}) {
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
-function UntrackedPage({purchases,setPurchases,orders}) {
+function hasInventoryTracking(catalog, p) {
+  const cats = Array.isArray(catalog?.purchaseCategories) ? catalog.purchaseCategories : [];
+  const catObj = cats.find(c=>c.cat===p.itemCat);
+  if(!catObj) return false;
+  const brandObj = catObj.brands?.find(b=>b.brand===p.itemBrand);
+  if(!brandObj) return false;
+  const serObj = brandObj.series?.find(s=>s.models?.includes(p.itemVariant));
+  if(!serObj) return false;
+  return !!((serObj.stockIds||{})[p.itemVariant]);
+}
+
+function UntrackedPage({purchases,setPurchases,orders,catalog}) {
   const usedPurIds = useMemo(()=>{
     const s=new Set();
     (orders||[]).forEach(o=>(o.items||[]).forEach(i=>{ if(i.purId) s.add(i.purId); }));
@@ -6390,9 +6401,9 @@ function UntrackedPage({purchases,setPurchases,orders}) {
   },[orders]);
 
   const unused = useMemo(()=>
-    (purchases||[]).filter(p=>!p.selfUse&&!usedPurIds.has(p.id))
+    (purchases||[]).filter(p=>!p.selfUse&&!usedPurIds.has(p.id)&&!hasInventoryTracking(catalog,p))
       .sort((a,b)=>(b.date||"").localeCompare(a.date||""))
-  ,[purchases,usedPurIds]);
+  ,[purchases,usedPurIds,catalog]);
 
   const selfUsed = useMemo(()=>
     (purchases||[]).filter(p=>p.selfUse)
@@ -6648,7 +6659,7 @@ function App() {
       <div style={{padding:"16px 14px 32px",position:"relative",zIndex:1}}>
         {page==="orders"   &&<OrdersPage    orders={orders}    setOrders={setOrders} catalog={catalog} stock={stock} purchases={purchases} pendingOrderId={pendingOrderId} onPendingConsumed={()=>setPendingOrderId(null)} stockAdj={stockAdj}/>}
         {page==="purchases"&&<PurchasesPage purchases={purchases} setPurchases={setPur} catalog={catalog} stock={stock} orders={orders}/>}
-        {page==="untracked"&&<UntrackedPage purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} orders={orders}/>}
+        {page==="untracked"&&<UntrackedPage purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} orders={orders} catalog={catalog}/>}
         {page==="inventory"&&<InventoryPage stock={stock} catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} purchases={purchases} setPurchases={p=>{setPur(p);save(SK.purchases,p);}} expenses={expenses} setExpenses={e=>{setExp(e);save(SK.expenses,e);}} stockAdj={stockAdj} setStockAdj={a=>{setStockAdj(a);save(SK.stockAdj,a);}} transferDiffs={transferDiffs} setTransferDiffs={a=>{setTransferDiffs(a);save(SK.transferDiffs,a);}} orders={orders} setOrders={o=>{setOrders(o);save(SK.orders,o);}} onJumpToOrder={id=>{setPendingOrderId(id);setPage("orders");}}/>}
         {page==="expenses" &&<ExpensesPage  orders={orders} purchases={purchases} expenses={expenses} setExpenses={setExp} catalog={catalog}/>}
         {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses} transferDiffs={transferDiffs}/>}
