@@ -1596,7 +1596,8 @@ function OrdersPage({orders,setOrders,catalog,stock,purchases,pendingOrderId,onP
   const filtered=useMemo(()=>orders.filter(o=>{
     const mok=q?true:o.date?.slice(0,7)===mk;
     const dok=q?true:(fd==="全部"||o.date?.slice(0,10)===fd);
-    const sok=!q||[o.brandName,o.modelName,o.modelFree,o.customer,...(o.items||[]).map(i=>i.name)].join(" ").includes(q);
+    const hay=[o.brandName,o.modelName,o.modelFree,o.customer,...(o.items||[]).map(i=>i.name)].join(" ");
+    const sok=!q||q.trim().split(/\s+/).filter(Boolean).every(t=>hay.includes(t));
     return mok&&dok&&sok;
   }),[orders,mk,fd,q]);
 
