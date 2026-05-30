@@ -4122,7 +4122,7 @@ function MonthlyReportModal({y,m,orders,purchases,expenses,onClose}) {
         {/* 損益計算 */}
         {sec("本月損益")}
         <div style={{background:card,border:`1px solid ${border}`,borderRadius:10,padding:"12px 16px",maxWidth:380}}>
-          {[["營業額",mRev,C.green,false],["− 進貨成本",totPur,C.orange,true],["− 固定支出",manE,C.orange,true],...(totalFee>0?[["− Line Pay 手續費",totalFee,C.red,true]]:=[]),...(totalTax>0?[["− 營業稅",totalTax,C.red,true]]:[])].map(([l,v,c,neg])=>(
+          {[["營業額",mRev,C.green,false],["− 進貨成本",totPur,C.orange,true],["− 固定支出",manE,C.orange,true],...(totalFee>0?[["− Line Pay 手續費",totalFee,C.red,true]]:[]),...(totalTax>0?[["− 營業稅",totalTax,C.red,true]]:[])].map(([l,v,c,neg])=>(
             <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${border}`}}>
               <span style={{color:txm,fontSize:13}}>{l}</span>
               <span style={{color:c,fontWeight:700}}>{neg?"− ":""}NT$ {v.toLocaleString()}</span>
