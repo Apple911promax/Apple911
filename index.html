@@ -102,8 +102,7 @@ const localLoad = (k,d) => { try{const v=localStorage.getItem(k);return v?JSON.p
 const localSave = (k,v) => { try{localStorage.setItem(k,JSON.stringify(v));}catch{} };
 
 async function save(key, value) {
-  localSave(key, value);       // instant local write
-  cloudSave(key, value);       // async cloud write (no await = non-blocking)
+  cloudSave(key, value);
 }
 function load(k, d) { return localLoad(k, d); }
 
@@ -118,17 +117,14 @@ const today= () => { const d=new Date(); return `${d.getFullYear()}-${String(d.g
 
 const UP_KEY = "apple911_usedPhones";
 
-/** 讀取所有二手機資料 */
-function loadUsedPhones() {
-  try {
-    const v = localStorage.getItem(UP_KEY);
-    return v ? JSON.parse(v) : [];
-  } catch(e) { return []; }
-}
+let _phonesCache = [];
+let _quoteSeriesCache = null;
+/** 讀取所有二手機資料（記憶體快取，由 syncFromCloud 填入） */
+function loadUsedPhones() { return _phonesCache; }
 
 /** 寫入所有二手機資料 */
 function saveUsedPhones(list) {
-  try { localStorage.setItem(UP_KEY, JSON.stringify(list)); } catch(e) {}
+  _phonesCache = list;
   cloudSave(UP_KEY, list);
 }
 
@@ -5616,7 +5612,7 @@ function SeriesPriceTable({ series }) {
   );
 }
 
-function QuotePage({catalog, stock}) {
+function QuotePage({catalog, stock, syncKey}) {
   // ── 內部報價試算 state ────────────────────────────────────────────────────────
   const [items, setItems] = useState([]);
   const [newItem, setNewItem] = useState({name:"", price:"", cost:""});
@@ -5644,9 +5640,10 @@ function QuotePage({catalog, stock}) {
   // ── 系列報價表 state ─────────────────────────────────────────────────────────
   const QS_KEY = "apple911_quoteSeriesData";
   function loadSeriesData() {
-    try { const v=localStorage.getItem(QS_KEY); return v?JSON.parse(v):quoteSeriesData; } catch{ return quoteSeriesData; }
+    return _quoteSeriesCache || quoteSeriesData;
   }
   const [seriesData, setSeriesData] = useState(()=>loadSeriesData());
+  useEffect(()=>{ setSeriesData(loadSeriesData()); }, [syncKey]);
   const [editMode,   setEditMode]   = useState(false);
   const [draftData,  setDraftData]  = useState(null);
   const [selSeries,  setSelSeries]  = useState(0);
@@ -5659,7 +5656,7 @@ function QuotePage({catalog, stock}) {
   function handleEnterEdit()  { setDraftData(JSON.parse(JSON.stringify(seriesData))); setEditMode(true); }
   function handleCancelEdit() { setDraftData(null); setEditMode(false); }
   function handleSaveSeries() {
-    try { localStorage.setItem(QS_KEY, JSON.stringify(draftData)); } catch{}
+    _quoteSeriesCache = draftData;
     cloudSave(QS_KEY, draftData);
     setSeriesData(draftData); setDraftData(null); setEditMode(false);
   }
@@ -6121,12 +6118,12 @@ function LookupPage() {
 }
 
 // ─── USED PHONES PAGE (二手機管理) ────────────────────────────────────────────
-function UsedPhonesPage({orders}) {
+function UsedPhonesPage({orders, syncKey}) {
   const [phones, setPhones] = useState(() => loadUsedPhones());
   const [form, setForm] = useState({ model:"", purchasePrice:"", source:"", note:"", purchaseDate:today() });
 
-  // 重新從 localStorage 讀取，保持畫面同步
   function refresh() { setPhones(loadUsedPhones()); }
+  useEffect(() => { refresh(); }, [syncKey]);
 
   // ── 新增二手機 ──────────────────────────────────────────────────────────────
   function handleAdd() {
@@ -6641,21 +6638,13 @@ function App() {
   const [role,setRole]         = useState(()=>sessionStorage.getItem("a911_auth")||"");
   const [page,setPage]    = useState("orders");
   const [pendingOrderId,setPendingOrderId] = useState(null);
-  const [orders,setOrders]= useState(()=>load(SK.orders,[]));
-  const [purchases,setPur]= useState(()=>load(SK.purchases,[]));
-  const [expenses,setExp] = useState(()=>load(SK.expenses,{}));
-  const [stockAdj,setStockAdj] = useState(()=>load(SK.stockAdj,[]));
-  const [transferDiffs,setTransferDiffs] = useState(()=>load(SK.transferDiffs,[]));
-  const [catalog,setCat]  = useState(()=>{
-    const s=load(SK.catalog,null); if(!s) return DEF;
-    return {...DEF,...s,
-      paymentMethods:s.paymentMethods||DEF.paymentMethods,
-      vendors:s.vendors?.length?s.vendors:DEF.vendors,
-      purchaseItems:s.purchaseItems||DEF.purchaseItems,
-        purchaseCategories:s.purchaseCategories||DEF.purchaseCategories,
-      expenseTypes:s.expenseTypes||DEF.expenseTypes,
-    };
-  });
+  const [orders,setOrders]= useState([]);
+  const [purchases,setPur]= useState([]);
+  const [expenses,setExp] = useState({});
+  const [stockAdj,setStockAdj] = useState([]);
+  const [transferDiffs,setTransferDiffs] = useState([]);
+  const [catalog,setCat]  = useState(DEF);
+  const [syncVersion,setSyncVersion] = useState(0);
   const [syncing,setSyncing] = useState(true);
   const [syncOk,setSyncOk]   = useState(false);
 
@@ -6722,29 +6711,15 @@ function App() {
           cloudLoad(UP_KEY,[]),
           cloudLoad("apple911_quoteSeriesData",null),
         ]);
-        if(o?.length)              { setOrders(o);          localSave(SK.orders,o); }
-        else                       { const loc=localLoad(SK.orders,[]); if(loc.length) cloudSave(SK.orders,loc); }
-        if(p?.length)              { setPur(p);             localSave(SK.purchases,p); }
-        else                       { const loc=localLoad(SK.purchases,[]); if(loc.length) cloudSave(SK.purchases,loc); }
-        if(e&&Object.keys(e).length){ setExp(e);            localSave(SK.expenses,e); }
-        else                       { const loc=localLoad(SK.expenses,{}); if(Object.keys(loc).length) cloudSave(SK.expenses,loc); }
-        if(cat)                    { setCat(mergeCatalog(cat)); localSave(SK.catalog,cat); }
-        else                       { const loc=localLoad(SK.catalog,null); if(loc) cloudSave(SK.catalog,loc); }
-        if(sa?.length) { setStockAdj(sa);        localSave(SK.stockAdj,sa); }
-        if(td?.length) { setTransferDiffs(td);   localSave(SK.transferDiffs,td); }
-        if(up?.length) {
-          try { localStorage.setItem(UP_KEY, JSON.stringify(up)); } catch{}
-        } else {
-          // Firebase 沒資料但本機有 → 自動推上去（一次性遷移）
-          const local = loadUsedPhones();
-          if(local.length) cloudSave(UP_KEY, local);
-        }
-        if(qs) {
-          try { localStorage.setItem("apple911_quoteSeriesData", JSON.stringify(qs)); } catch{}
-        } else {
-          // 報價同樣自動遷移
-          try { const localQs = localStorage.getItem("apple911_quoteSeriesData"); if(localQs) cloudSave("apple911_quoteSeriesData", JSON.parse(localQs)); } catch{}
-        }
+        if(o?.length)               { setOrders(o); }
+        if(p?.length)               { setPur(p); }
+        if(e&&Object.keys(e).length){ setExp(e); }
+        if(cat)                     { setCat(mergeCatalog(cat)); }
+        if(sa?.length)              { setStockAdj(sa); }
+        if(td?.length)              { setTransferDiffs(td); }
+        if(up?.length)              { _phonesCache = up; }
+        if(qs)                      { _quoteSeriesCache = qs; }
+        setSyncVersion(v => v + 1);
         setSyncOk(true);
         setTimeout(()=>setSyncOk(false),2000);
       } catch(e){ console.warn("sync error",e); }
@@ -6839,8 +6814,8 @@ function App() {
         {page==="reports"  &&<ReportsPage   orders={orders} purchases={purchases} expenses={expenses} transferDiffs={transferDiffs}/>}
         {page==="lookup"   &&<LookupPage/>}
         {page==="vendors"  &&<VendorPage catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}}/>}
-        {page==="quote"    &&<QuotePage catalog={catalog} stock={stock}/>}
-        {page==="usedPhones" &&<UsedPhonesPage orders={orders}/>}
+        {page==="quote"    &&<QuotePage catalog={catalog} stock={stock} syncKey={syncVersion}/>}
+        {page==="usedPhones" &&<UsedPhonesPage orders={orders} syncKey={syncVersion}/>}
         {page==="admin"    &&<AdminPage     catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} isBoss={role==="boss"} orders={orders} setOrders={setOrders}/>}
       </div>
 
