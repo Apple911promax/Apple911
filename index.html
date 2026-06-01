@@ -1093,12 +1093,26 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders,st
         {purOpen&&(()=>{
           const q=purSearch.toLowerCase();
           // ── FIFO 庫存計算 ────────────────────────────────────────────────
-          // Step1: 計算每個 stockId 已被工單消耗的總數（stockId 維度，與 useStock 一致）
-          const stockIdUsed={}; // stockId → 已用總數（stockId 維度，與 useStock 一致）
-          // 從已儲存工單的 items 計算
+          // purId 直接扣款（明確指定進貨批次的工單）
+          const purIdDirectDeduct={};
+          // stockId-only 使用量（沒有 purId 的，才走 FIFO 最舊優先扣）
+          const stockIdFifoUses={};
+          const collectUses=(itemList,isCurrent)=>{
+            itemList.forEach(i=>{
+              const qty=Number(i.qty)||1;
+              if(i.purId){
+                purIdDirectDeduct[i.purId]=(purIdDirectDeduct[i.purId]||0)+qty;
+              } else if(i.stockId){
+                stockIdFifoUses[i.stockId]=(stockIdFifoUses[i.stockId]||0)+qty;
+              }
+            });
+          };
+          (orders||[]).forEach(o=>collectUses(o.items||[],false));
+          collectUses(items,true);
+          // usageCount 僅用於顯示（哪些工單用了這批進貨），不再作為過濾條件
+          const stockIdUsed={}; // 保留供 stockIdFifoUses 以外的地方使用
           (orders||[]).forEach(o=>(o.items||[]).forEach(i=>{
             if(i.stockId) stockIdUsed[i.stockId]=(stockIdUsed[i.stockId]||0)+(Number(i.qty)||1);
-            // 若 item 有 purId，也反查進貨的 stockId 補計（處理舊工單 stockId 欄位缺失的情況）
             if(i.purId){
               const pur=(purchases||[]).find(p=>p.id===i.purId);
               if(pur&&!i.stockId){
@@ -1107,7 +1121,6 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders,st
               }
             }
           }));
-          // 目前工單中尚未儲存的 items 也計入
           items.forEach(i=>{
             if(i.stockId) stockIdUsed[i.stockId]=(stockIdUsed[i.stockId]||0)+(Number(i.qty)||1);
             if(i.purId&&!i.stockId){
@@ -1149,8 +1162,8 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders,st
               if(ca!==0) return ca;
               return (a.id||"").localeCompare(b.id||"");
             });
-            // 正數調整等於補回庫存，可減少 FIFO 扣除量；負數調整增加扣除量
-            let toDeduct=Math.max(0,(stockIdUsed[sid]||0)-(adjBySid[sid]||0));
+            // FIFO 只扣 stockId-only 的用量，purId 直接扣款另外處理
+            let toDeduct=Math.max(0,(stockIdFifoUses[sid]||0)-(adjBySid[sid]||0));
             sorted.forEach(p=>{
               const batchQty=Number(p.qty)||1;
               if(toDeduct>=batchQty){
@@ -1160,6 +1173,9 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders,st
                 purFifoRemaining[p.id]=batchQty-toDeduct;
                 toDeduct=0;
               }
+              // 再扣 purId 直接使用量（明確指定這批進貨的工單）
+              const direct=purIdDirectDeduct[p.id]||0;
+              if(direct>0) purFifoRemaining[p.id]=Math.max(0,purFifoRemaining[p.id]-direct);
             });
           });
           // usageCount：purId 維度，用於 (1) 顯示已用工單標籤 (2) 作為 FIFO 的保底過濾
@@ -1295,9 +1311,7 @@ function RepairForm({catalog,onSave,onCancel,editOrder,stock,purchases,orders,st
           // 雙軌過濾：FIFO（stockId 維度）AND purId 維度 兩者都檢查
           const results=(purchases||[]).filter(p=>{
             if(p.selfUse) return false;
-            // purId 維度：已用次數 >= 進貨數量 → 排除
-            if((usageCount[p.id]||0)>=(p.qty||1)) return false;
-            // FIFO 維度：若已算出 FIFO 剩餘且為 0 → 排除
+            // FIFO 剩餘為 0 → 排除（包含 purId 直接扣款後為 0 的情況）
             if(purFifoRemaining[p.id]!==undefined && purFifoRemaining[p.id]<=0) return false;
             if(!qTokens.length) return true;
             const manualSids=getManualStockIdsForPurchase(p);
