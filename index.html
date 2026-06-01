@@ -78,7 +78,7 @@ const COL = "apple911";
 async function cloudSave(key, value) {
   try {
     const body = { fields: { value: toFS(value) } };
-    await fetch(`${FB_BASE}/${COL}/${key}?key=${FB_API_KEY}`, {
+    await fetch(`/api/firebase?key=${encodeURIComponent(key)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -88,7 +88,7 @@ async function cloudSave(key, value) {
 
 async function cloudLoad(key, def) {
   try {
-    const r = await fetch(`${FB_BASE}/${COL}/${key}?key=${FB_API_KEY}`, { cache: "no-cache" });
+    const r = await fetch(`/api/firebase?key=${encodeURIComponent(key)}`, { cache: "no-cache" });
     if (!r.ok) return def;
     const data = await r.json();
     if (data.fields && data.fields.value) return fromFS(data.fields.value);
