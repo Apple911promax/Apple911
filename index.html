@@ -88,7 +88,7 @@ async function cloudSave(key, value) {
 
 async function cloudLoad(key, def) {
   try {
-    const r = await fetch(`${FB_BASE}/${COL}/${key}?key=${FB_API_KEY}`);
+    const r = await fetch(`${FB_BASE}/${COL}/${key}?key=${FB_API_KEY}`, { cache: "no-cache" });
     if (!r.ok) return def;
     const data = await r.json();
     if (data.fields && data.fields.value) return fromFS(data.fields.value);
@@ -6722,10 +6722,14 @@ function App() {
           cloudLoad(UP_KEY,[]),
           cloudLoad("apple911_quoteSeriesData",null),
         ]);
-        setOrders(o||[]);          localSave(SK.orders,o||[]);
-        setPur(p||[]);             localSave(SK.purchases,p||[]);
-        setExp(e||{});             localSave(SK.expenses,e||{});
-        setCat(mergeCatalog(cat));
+        if(o?.length)              { setOrders(o);          localSave(SK.orders,o); }
+        else                       { const loc=localLoad(SK.orders,[]); if(loc.length) cloudSave(SK.orders,loc); }
+        if(p?.length)              { setPur(p);             localSave(SK.purchases,p); }
+        else                       { const loc=localLoad(SK.purchases,[]); if(loc.length) cloudSave(SK.purchases,loc); }
+        if(e&&Object.keys(e).length){ setExp(e);            localSave(SK.expenses,e); }
+        else                       { const loc=localLoad(SK.expenses,{}); if(Object.keys(loc).length) cloudSave(SK.expenses,loc); }
+        if(cat)                    { setCat(mergeCatalog(cat)); localSave(SK.catalog,cat); }
+        else                       { const loc=localLoad(SK.catalog,null); if(loc) cloudSave(SK.catalog,loc); }
         if(sa?.length) { setStockAdj(sa);        localSave(SK.stockAdj,sa); }
         if(td?.length) { setTransferDiffs(td);   localSave(SK.transferDiffs,td); }
         if(up?.length) {
