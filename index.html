@@ -27,6 +27,7 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone@7.23.0/babel.min.js"></script>
+  <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <div id="root"></div>
@@ -4971,7 +4972,50 @@ function VendorAdmin({catalog, sc}) {
   );
 }
 
-function AdminPage({catalog,setCatalog,isBoss,orders,setOrders}) {
+function exportExcel(orders, purchases, expenses, stockAdj) {
+  const XLS = window.XLSX;
+  if (!XLS) { alert('匯出套件載入中，請稍後再試'); return; }
+  const wb = XLS.utils.book_new();
+  const hS = { font:{bold:true,color:{rgb:"FFFFFF"}}, fill:{fgColor:{rgb:"1E3A6E"}}, alignment:{horizontal:"center"} };
+  function addSheet(name, headers, rows) {
+    const ws = XLS.utils.aoa_to_sheet([headers, ...rows]);
+    headers.forEach((_,i)=>{ const ref=XLS.utils.encode_cell({r:0,c:i}); if(ws[ref]) ws[ref].s=hS; });
+    ws['!cols']=headers.map((h,i)=>({ wch:Math.min(Math.max(h.length,...rows.map(r=>String(r[i]||"").length))+2,40) }));
+    XLS.utils.book_append_sheet(wb,ws,name);
+  }
+  // 工單
+  addSheet("工單記錄",["日期","客戶","品牌","型號","維修項目","零件成本","收款金額","付款方式","利潤","備注"],
+    (orders||[]).map(o=>{
+      const isLP=o.payments?.some(p=>p.toLowerCase().includes("line"));
+      const fee=isLP?(o.linePayFee||Math.round((o.totalRevenue||0)*0.03)):0;
+      const tax=isLP?(o.linePayTax||Math.round(fee*0.05)):0;
+      return [o.date||"",o.customer||"",o.brandName||"",o.modelName||o.modelFree||"",(o.items||[]).map(i=>i.name).join("、"),o.totalCost||0,o.totalRevenue||0,(o.payments||[]).join("、"),(o.totalRevenue||0)-(o.totalCost||0)-fee-tax,o.note||""];
+    })
+  );
+  // 進貨
+  addSheet("進貨記錄",["日期","品項","品牌","型號","數量","金額","廠商","備注"],
+    (purchases||[]).map(p=>[p.date||"",p.itemName||p.itemCat||"",p.itemBrand||"",p.itemVariant||"",p.qty||1,p.amount||0,p.vendorName||"",p.note||""])
+  );
+  // 支出
+  const expRows=[];
+  Object.entries(expenses||{}).forEach(([mk,data])=>{
+    if(mk==="__setup") return;
+    (data.items||[]).forEach(item=>expRows.push([item.date||mk,item.type||"",item.amount||0,item.note||""]));
+  });
+  expRows.sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+  addSheet("支出記錄",["日期","類別","金額","備注"],expRows);
+  // 庫存調整
+  addSheet("庫存調整",["日期","品項","型號","數量","原因","備注"],
+    (stockAdj||[]).filter(a=>!a.cancelled).map(a=>[a.date||"",a.itemName||a.stockId||"",a.model||"",a.qty||0,a.reason||"",a.note||""])
+  );
+  // 二手機
+  addSheet("二手機",["型號","收購價","來源","狀態","售價","利潤","備注"],
+    (loadUsedPhones()||[]).map(p=>[p.model||"",p.purchasePrice||0,p.source||"",p.status||"",p.sellPrice||"",p.sellPrice?(p.sellPrice-(p.purchasePrice||0)):"",p.note||""])
+  );
+  XLS.writeFile(wb,`Apple911_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+function AdminPage({catalog,setCatalog,isBoss,orders,setOrders,purchases,expenses,stockAdj}) {
   const [unlocked,setUnlocked] = useState(false);
   const [pin,setPin]           = useState("");
   const [pinErr,setPinErr]     = useState(false);
@@ -5013,7 +5057,7 @@ function AdminPage({catalog,setCatalog,isBoss,orders,setOrders}) {
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{tb("brands","🏷 品牌/型號")}{tb("items","🛠 維修項目")}{tb("vendors","🏭 廠商/品項")}{tb("payments","💳 付款")}{tb("expenses","📋 支出類別")}</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{tb("brands","🏷 品牌/型號")}{tb("items","🛠 維修項目")}{tb("vendors","🏭 廠商/品項")}{tb("payments","💳 付款")}{tb("expenses","📋 支出類別")}{tb("export","📊 匯出")}</div>
         <button onClick={()=>setUnlocked(false)} style={{color:C.textDim,background:"none",border:"none",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🔒 鎖定</button>
       </div>
 
@@ -5310,6 +5354,30 @@ function AdminPage({catalog,setCatalog,isBoss,orders,setOrders}) {
           onDelete={(_,i)=>sc({...catalog,expenseTypes:(catalog.expenseTypes||DEF.expenseTypes).filter((_,j)=>j!==i)})}
           onEdit={(_,i,v)=>{const a=[...(catalog.expenseTypes||DEF.expenseTypes)];a[i]=v;sc({...catalog,expenseTypes:a});}}
         />
+      </Card>)}
+
+      {tab==="export"&&(<Card>
+        <H>匯出 Excel</H>
+        <div style={{color:C.textDim,fontSize:12,marginBottom:16}}>
+          匯出全部資料為 Excel 檔案，包含：工單記錄、進貨記錄、支出記錄、庫存調整、二手機共 5 個工作表。
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{color:C.text,fontSize:13}}>
+            <span style={{color:C.accent}}>📋 工單記錄</span>　共 {(orders||[]).length} 筆
+          </div>
+          <div style={{color:C.text,fontSize:13}}>
+            <span style={{color:C.accent}}>📦 進貨記錄</span>　共 {(purchases||[]).length} 筆
+          </div>
+          <div style={{color:C.text,fontSize:13}}>
+            <span style={{color:C.accent}}>💸 支出記錄</span>　共 {(expenses||[]).length} 筆
+          </div>
+          <div style={{color:C.text,fontSize:13}}>
+            <span style={{color:C.accent}}>🔧 庫存調整</span>　共 {(stockAdj||[]).length} 筆
+          </div>
+        </div>
+        <div style={{marginTop:20}}>
+          <Btn onClick={()=>exportExcel(orders,purchases,expenses,stockAdj)}>📥 下載 Excel</Btn>
+        </div>
       </Card>)}
     </div>
   );
@@ -6830,7 +6898,7 @@ function App() {
         {page==="vendors"  &&<VendorPage catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}}/>}
         {page==="quote"    &&<QuotePage catalog={catalog} stock={stock} syncKey={syncVersion}/>}
         {page==="usedPhones" &&<UsedPhonesPage orders={orders} syncKey={syncVersion}/>}
-        {page==="admin"    &&<AdminPage     catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} isBoss={role==="boss"} orders={orders} setOrders={setOrders}/>}
+        {page==="admin"    &&<AdminPage     catalog={catalog} setCatalog={c=>{setCat(c);save(SK.catalog,c);}} isBoss={role==="boss"} orders={orders} setOrders={setOrders} purchases={purchases} expenses={expenses} stockAdj={stockAdj}/>}
       </div>
 
 
